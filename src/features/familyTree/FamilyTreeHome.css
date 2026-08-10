@@ -64,6 +64,11 @@
   gap: 12px;
 }
 
+.home__toolbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .home__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -82,5 +87,13 @@
   .home__toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .home__toolbar-actions {
+    width: 100%;
+  }
+
+  .home__toolbar-actions .button {
+    flex: 1;
   }
 }

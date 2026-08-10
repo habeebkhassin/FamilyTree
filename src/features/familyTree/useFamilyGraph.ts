@@ -92,6 +92,8 @@ export function useFamilyGraph(familyTreeId: string) {
 
   return {
     people,
+    parentLinks,
+    unions,
     status,
     reload,
     engine,

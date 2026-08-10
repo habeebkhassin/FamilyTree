@@ -7,6 +7,7 @@ import type { PersonFormValues } from '../people/PersonForm'
 import { PersonProfile } from '../people/PersonProfile'
 import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../people/personDisplay'
 import type { LinkExtras, RelativeIntent } from '../people/types'
+import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
 import { FamilyTreeHome } from './FamilyTreeHome'
 import { useFamilyGraph } from './useFamilyGraph'
 import './FamilyTreeWorkspace.css'
@@ -17,6 +18,7 @@ interface FamilyTreeWorkspaceProps {
 
 type View =
   | { screen: 'home' }
+  | { screen: 'tree' }
   | { screen: 'createPerson'; relativeIntent?: RelativeIntent }
   | { screen: 'editPerson'; personId: string }
   | { screen: 'personProfile'; personId: string }
@@ -28,8 +30,19 @@ function describeLinkError(error: unknown): string {
 }
 
 export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
-  const { people, status, reload, engine, addPerson, editPerson, removePerson, connectExisting, createRelative } =
-    useFamilyGraph(tree.id)
+  const {
+    people,
+    parentLinks,
+    unions,
+    status,
+    reload,
+    engine,
+    addPerson,
+    editPerson,
+    removePerson,
+    connectExisting,
+    createRelative,
+  } = useFamilyGraph(tree.id)
   const [view, setView] = useState<View>({ screen: 'home' })
   const [linkError, setLinkError] = useState<string | null>(null)
   const [isLinking, setIsLinking] = useState(false)
@@ -37,6 +50,11 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
   function goHome() {
     setLinkError(null)
     setView({ screen: 'home' })
+  }
+
+  function openTreeView() {
+    setLinkError(null)
+    setView({ screen: 'tree' })
   }
 
   function openProfile(personId: string) {
@@ -117,7 +135,18 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
             status={status}
             onAddPerson={() => openCreatePerson()}
             onOpenPerson={openProfile}
+            onOpenTreeView={openTreeView}
             onRetry={reload}
+          />
+        )}
+
+        {view.screen === 'tree' && (
+          <FamilyTreeCanvas
+            people={people}
+            parentLinks={parentLinks}
+            unions={unions}
+            onSelectPerson={openProfile}
+            onBack={goHome}
           />
         )}
 

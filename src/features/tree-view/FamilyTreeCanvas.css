@@ -1,0 +1,71 @@
+.tree-canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 24px 24px;
+}
+
+.tree-canvas__back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.tree-canvas__back:hover {
+  color: var(--accent);
+}
+
+.tree-canvas__viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/*
+ * React Flow sets its own root wrapper to `width/height: 100%` via an
+ * inline style, but percentage heights only resolve against an ancestor
+ * whose height was set with an explicit CSS length — not one that merely
+ * ends up a definite pixel value through flex-grow, which is exactly
+ * .tree-canvas__viewport's situation. The result: React Flow measures a
+ * real 0px parent (its own "parent container needs a width and a height"
+ * warning) and never renders. Pinning it to the positioned ancestor's box
+ * via inset instead sidesteps that percentage-resolution rule entirely.
+ * The !important is deliberate — overriding the library's inline style.
+ */
+.tree-canvas__viewport .react-flow {
+  position: absolute !important;
+  inset: 0;
+}
+
+.tree-canvas__status {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.tree-canvas .react-flow__controls-button {
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.tree-canvas .react-flow__controls-button:hover {
+  background: var(--accent-bg);
+}
+
+.tree-canvas .react-flow__handle {
+  background: var(--accent);
+  border-color: var(--surface);
+}

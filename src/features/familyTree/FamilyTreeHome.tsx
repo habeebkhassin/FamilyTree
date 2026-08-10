@@ -12,10 +12,19 @@ interface FamilyTreeHomeProps {
   status: PeopleStatus
   onAddPerson: () => void
   onOpenPerson: (personId: string) => void
+  onOpenTreeView: () => void
   onRetry: () => void
 }
 
-export function FamilyTreeHome({ tree, people, status, onAddPerson, onOpenPerson, onRetry }: FamilyTreeHomeProps) {
+export function FamilyTreeHome({
+  tree,
+  people,
+  status,
+  onAddPerson,
+  onOpenPerson,
+  onOpenTreeView,
+  onRetry,
+}: FamilyTreeHomeProps) {
   return (
     <div className="home">
       <header className="home__header">
@@ -51,7 +60,12 @@ export function FamilyTreeHome({ tree, people, status, onAddPerson, onOpenPerson
             <p className="home__count">
               {people.length} {people.length === 1 ? 'person' : 'people'} in this tree
             </p>
-            <Button onClick={onAddPerson}>Add another person</Button>
+            <div className="home__toolbar-actions">
+              <Button variant="secondary" onClick={onOpenTreeView}>
+                Family Tree
+              </Button>
+              <Button onClick={onAddPerson}>Add another person</Button>
+            </div>
           </div>
           <div className="home__grid">
             {people.map((person) => (
