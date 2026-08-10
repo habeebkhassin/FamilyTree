@@ -18,7 +18,8 @@ export class InvalidRelationshipError extends Error {
   }
 }
 
-async function assertPeopleBelongToTree(familyTreeId: string, personIds: string[]): Promise<void> {
+/** Exported so familyGroups.ts can reuse the exact same cross-tree guard rather than re-implementing it. */
+export async function assertPeopleBelongToTree(familyTreeId: string, personIds: string[]): Promise<void> {
   const people = await db.people.bulkGet(personIds)
   for (let index = 0; index < personIds.length; index += 1) {
     const person = people[index]
