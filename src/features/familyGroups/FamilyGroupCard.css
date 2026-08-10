@@ -1,0 +1,40 @@
+.family-group-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.family-group-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.family-group-card__name {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  color: var(--text);
+}
+
+.family-group-card__description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.family-group-card__meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+}

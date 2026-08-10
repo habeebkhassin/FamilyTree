@@ -1,0 +1,125 @@
+.person-family-groups__title {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.person-family-groups__hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.person-family-groups__empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.person-family-groups__create-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.person-family-groups__create-link:hover {
+  text-decoration: underline;
+}
+
+.person-family-groups__list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-family-groups__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.person-family-groups__link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.person-family-groups__link:hover {
+  color: var(--accent);
+}
+
+.person-family-groups__founder-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.person-family-groups__remove {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.person-family-groups__remove:hover {
+  background: var(--accent-bg);
+  color: var(--danger);
+}
+
+.person-family-groups__add {
+  display: flex;
+  gap: 10px;
+}
+
+.person-family-groups__select {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.person-family-groups__select:focus {
+  border-color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .person-family-groups__add {
+    flex-direction: column;
+  }
+
+  .person-family-groups__add .button {
+    width: 100%;
+  }
+}

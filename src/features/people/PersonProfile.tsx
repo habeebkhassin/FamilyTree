@@ -3,7 +3,10 @@ import { Avatar } from '../../components/Avatar'
 import { Button } from '../../components/Button'
 import { Card } from '../../components/Card'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import type { FamilyGroup } from '../../types'
 import type { Person } from '../../types'
+import { PersonFamilyGroupsCard } from '../familyGroups/PersonFamilyGroupsCard'
+import type { PersonFamilyGroupMembership } from '../familyGroups/PersonFamilyGroupsCard'
 import { formatFullDate, formatName } from './personDisplay'
 import { RelationshipSection } from './RelationshipSection'
 import type { RelationshipItem, RelationshipKind } from './types'
@@ -15,11 +18,17 @@ interface PersonProfileProps {
   siblings: RelationshipItem[]
   partners: RelationshipItem[]
   children: RelationshipItem[]
+  familyGroupMemberships: PersonFamilyGroupMembership[]
+  availableFamilyGroups: FamilyGroup[]
   onBack: () => void
   onEdit: () => void
   onDelete: () => void
   onAddRelative: (kind: RelationshipKind) => void
   onOpenPerson: (personId: string) => void
+  onAddToFamilyGroup: (familyGroupId: string) => void
+  onRemoveFromFamilyGroup: (membershipId: string) => void
+  onOpenFamilyGroup: (familyGroupId: string) => void
+  onCreateFamilyGroup: () => void
 }
 
 export function PersonProfile({
@@ -28,11 +37,17 @@ export function PersonProfile({
   siblings,
   partners,
   children,
+  familyGroupMemberships,
+  availableFamilyGroups,
   onBack,
   onEdit,
   onDelete,
   onAddRelative,
   onOpenPerson,
+  onAddToFamilyGroup,
+  onRemoveFromFamilyGroup,
+  onOpenFamilyGroup,
+  onCreateFamilyGroup,
 }: PersonProfileProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const fullName = formatName(person)
@@ -106,6 +121,17 @@ export function PersonProfile({
           onOpenPerson={onOpenPerson}
         />
       </Card>
+
+      <PersonFamilyGroupsCard
+        personId={person.id}
+        personName={fullName}
+        memberships={familyGroupMemberships}
+        availableGroups={availableFamilyGroups}
+        onAddToGroup={onAddToFamilyGroup}
+        onRemoveFromGroup={onRemoveFromFamilyGroup}
+        onOpenGroup={onOpenFamilyGroup}
+        onCreateGroup={onCreateFamilyGroup}
+      />
 
       {confirmingDelete && (
         <ConfirmDialog

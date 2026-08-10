@@ -13,6 +13,7 @@ interface FamilyTreeHomeProps {
   onAddPerson: () => void
   onOpenPerson: (personId: string) => void
   onOpenTreeView: () => void
+  onOpenFamilyGroups: () => void
   onRetry: () => void
 }
 
@@ -23,6 +24,7 @@ export function FamilyTreeHome({
   onAddPerson,
   onOpenPerson,
   onOpenTreeView,
+  onOpenFamilyGroups,
   onRetry,
 }: FamilyTreeHomeProps) {
   return (
@@ -63,6 +65,9 @@ export function FamilyTreeHome({
             <div className="home__toolbar-actions">
               <Button variant="secondary" onClick={onOpenTreeView}>
                 Family Tree
+              </Button>
+              <Button variant="secondary" onClick={onOpenFamilyGroups}>
+                Family Groups
               </Button>
               <Button onClick={onAddPerson}>Add another person</Button>
             </div>

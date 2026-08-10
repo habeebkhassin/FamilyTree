@@ -108,6 +108,11 @@ export function getFamilyGroupMembers(familyGroupId: string): Promise<FamilyGrou
   return db.familyGroupMembers.where('familyGroupId').equals(familyGroupId).toArray()
 }
 
+/** All membership rows for every group in a tree, in one indexed query — lets the UI load member counts/lists for a whole tree without one query per group. */
+export function getFamilyGroupMembersByTree(familyTreeId: string): Promise<FamilyGroupMember[]> {
+  return db.familyGroupMembers.where('familyTreeId').equals(familyTreeId).toArray()
+}
+
 export function removeFamilyGroupMember(id: string): Promise<void> {
   return db.familyGroupMembers.delete(id)
 }

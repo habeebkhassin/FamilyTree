@@ -22,6 +22,7 @@ import {
   DuplicateFamilyGroupMemberError,
   getFamilyGroup,
   getFamilyGroupMembers,
+  getFamilyGroupMembersByTree,
   getFamilyGroupsByTree,
   InvalidFamilyGroupError,
   removeFamilyGroupMember,
@@ -113,6 +114,28 @@ test('addFamilyGroupMember adds a person to a group', async () => {
   const members = await getFamilyGroupMembers(group.id)
   assert.equal(members.length, 1)
   assert.equal(members[0]?.personId, person.id)
+})
+
+test('getFamilyGroupMembersByTree returns membership rows across every group in the tree, scoped to that tree', async () => {
+  const treeA = await createTestTree()
+  const treeB = await createTestTree()
+  const personA1 = await createTestPerson(treeA.id, 'A1')
+  const personA2 = await createTestPerson(treeA.id, 'A2')
+  const personB1 = await createTestPerson(treeB.id, 'B1')
+  const groupA1 = await createFamilyGroup({ familyTreeId: treeA.id, name: 'A Group 1', establishedPrecision: 'unknown' })
+  const groupA2 = await createFamilyGroup({ familyTreeId: treeA.id, name: 'A Group 2', establishedPrecision: 'unknown' })
+  const groupB = await createFamilyGroup({ familyTreeId: treeB.id, name: 'B Group', establishedPrecision: 'unknown' })
+  await addFamilyGroupMember({ familyTreeId: treeA.id, familyGroupId: groupA1.id, personId: personA1.id })
+  await addFamilyGroupMember({ familyTreeId: treeA.id, familyGroupId: groupA2.id, personId: personA2.id })
+  await addFamilyGroupMember({ familyTreeId: treeB.id, familyGroupId: groupB.id, personId: personB1.id })
+
+  const membersInA = await getFamilyGroupMembersByTree(treeA.id)
+
+  assert.equal(membersInA.length, 2)
+  assert.deepEqual(
+    new Set(membersInA.map((m) => m.personId)),
+    new Set([personA1.id, personA2.id]),
+  )
 })
 
 test('removeFamilyGroupMember removes only the membership row', async () => {

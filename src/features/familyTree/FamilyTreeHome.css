@@ -91,9 +91,10 @@
 
   .home__toolbar-actions {
     width: 100%;
+    flex-direction: column;
   }
 
   .home__toolbar-actions .button {
-    flex: 1;
+    width: 100%;
   }
 }
