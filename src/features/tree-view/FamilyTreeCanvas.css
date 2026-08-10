@@ -77,11 +77,35 @@
  */
 .tree-canvas__groups {
   max-width: 200px;
-  padding: 10px 12px;
+  padding: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
+}
+
+/* The always-visible part: on a phone this is the whole control until tapped. */
+.tree-canvas__groups-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.tree-canvas__groups-summary:hover {
+  background: var(--accent-bg);
+}
+
+.tree-canvas__groups-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .tree-canvas__groups-title {
@@ -90,12 +114,18 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+}
+
+.tree-canvas__groups-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .tree-canvas__groups-list {
   list-style: none;
-  margin: 0;
+  margin: 4px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -157,16 +187,23 @@
   }
 
   .tree-canvas__groups {
-    max-width: 150px;
-    padding: 8px 10px;
+    max-width: 165px;
+    padding: 4px;
   }
 
   .tree-canvas__groups-list {
     max-height: 120px;
   }
 
-  /* Comfortable touch target for each toggle row. */
+  /* Both controls hold the 44px minimum touch target. */
+  .tree-canvas__groups-summary,
   .tree-canvas__groups-toggle {
-    padding: 9px 6px;
+    min-height: 44px;
+    padding: 6px;
+  }
+
+  /* The count is the first thing to go when width is tight. */
+  .tree-canvas__groups-badge {
+    display: none;
   }
 }

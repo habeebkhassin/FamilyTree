@@ -1,29 +1,27 @@
 /*
- * Width/height must stay in step with FAMILY_GROUP_NODE_WIDTH in layout.ts —
- * layout reserves the space, this draws into it. Height deliberately
- * matches .person-node so generation rows keep their geometry.
+ * Width must stay in step with FAMILY_GROUP_NODE_WIDTH in layout.ts —
+ * layout reserves the column, this draws into it. The wrapper's height is
+ * set per-node from the lineage's generation span; only the header card
+ * is painted, so a four-generation family does not become a four-row
+ * empty rectangle.
  */
 .family-group-node {
-  display: flex;
-  flex-direction: row;
-  /* Content sits at the top: the container's height covers every
-     generation its members span, so centring would float the label into
-     the middle of the lineage. */
-  align-items: flex-start;
-  gap: 10px;
+  position: relative;
   width: 200px;
-  /* Fills the wrapper React Flow sizes for us — that height is the
-     container's generation span, so this must stretch to it rather than
-     staying one row tall. */
   height: 100%;
   min-height: 72px;
+}
+
+.family-group-node__card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 72px;
   padding: 10px 14px;
-  /* Recessed and outlined, against .person-node's raised surface + solid
-     border + shadow — the main "not a person" cue. The container can be
-     several rows tall, so the fill is a faint wash (not the page
-     background, which would make a large one read as empty space) and the
-     dashed edge is drawn in the secondary text colour so the boundary
-     stays legible at a zoomed-out fit. */
+  /* Recessed and dashed, against .person-node's raised surface + solid
+     border + shadow — the main "not a person" cue. */
   background: var(--row-band);
   border: 1px dashed var(--text-secondary);
   border-radius: var(--radius-sm);
@@ -35,14 +33,38 @@
     background-color 0.15s ease;
 }
 
-.family-group-node:hover {
+.family-group-node__card:hover {
   border-color: var(--accent);
   background: var(--accent-bg);
 }
 
-.family-group-node:focus-visible {
+.family-group-node__card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/*
+ * Marks how far down the lineage reaches without filling the area. Purely
+ * decorative and never clickable, so the space beside other generations
+ * stays inert canvas rather than a large invisible target.
+ */
+.family-group-node__rail {
+  position: absolute;
+  left: 16px;
+  top: 72px;
+  bottom: 6px;
+  width: 0;
+  border-left: 2px dashed var(--border);
+  pointer-events: none;
+}
+
+.family-group-node__rail::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  bottom: -1px;
+  width: 8px;
+  border-top: 2px solid var(--border);
 }
 
 .family-group-node__disclosure {
@@ -55,7 +77,7 @@
 .family-group-node__info {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -74,6 +96,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* States the generation range in words, so the span is never left to the rail alone. */
+.family-group-node__span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent);
 }
 
 /*
@@ -127,8 +157,17 @@
   .family-group-node {
     width: 180px;
     min-height: 64px;
+  }
+
+  .family-group-node__card {
+    min-height: 64px;
     padding: 8px 10px;
     gap: 8px;
+  }
+
+  .family-group-node__rail {
+    left: 13px;
+    top: 64px;
   }
 
   .family-group-header {

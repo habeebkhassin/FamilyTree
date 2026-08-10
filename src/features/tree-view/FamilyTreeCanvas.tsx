@@ -88,13 +88,20 @@ function buildFamilyGroupHeaders(
     // toggle list in the corner remains the way to reach it.
     if (positions.length === 0) continue
 
+    // Anchored to the leftmost member OF THE TOPMOST ROW, not to the
+    // minimum x and minimum y taken independently — for a family whose
+    // people are scattered, those two minima can come from different
+    // members and put the header above empty canvas, detached from anyone
+    // it names. Taking both from the same row keeps it over a real member.
+    const topRowY = Math.min(...positions.map((position) => position.y))
+    const topRowLeftX = Math.min(
+      ...positions.filter((position) => position.y === topRowY).map((position) => position.x),
+    )
+
     headers.push({
       id: `group-header:${group.id}`,
       type: 'familyGroupHeader',
-      position: {
-        x: Math.min(...positions.map((position) => position.x)),
-        y: Math.min(...positions.map((position) => position.y)) - GROUP_HEADER_OFFSET,
-      },
+      position: { x: topRowLeftX, y: topRowY - GROUP_HEADER_OFFSET },
       selectable: false,
       draggable: false,
       data: { familyGroup: group, memberCount: memberIds.size },
@@ -181,10 +188,21 @@ function buildGenerationLabels(nodes: FamilyNode[]): GenerationLabelNode[] {
  * vocabulary as the real edge it came from, just quieter. Deliberately no
  * label: Phase 4D removed per-instance edge text because it became noise,
  * and this would reintroduce exactly that.
+ *
+ * Routing is forced to smoothstep. A Union segment is normally a short
+ * straight line between two partners standing side by side, but once one
+ * of them is absorbed the other end can be most of the canvas away, and a
+ * straight line across that distance reads as a long diagonal slash
+ * through unrelated people. Orthogonal routing keeps it in the same
+ * right-angled language as every other edge in the graph. This is a pure
+ * rendering choice — React Flow's own edge type, no custom router — and
+ * touches neither the relationship nor its rank.
  */
 function applyBoundaryEdgeStyle(edges: FamilyEdge[]): FamilyEdge[] {
   return edges.map((edge) =>
-    edge.data?.boundary ? { ...edge, style: { ...edge.style, opacity: 0.55 } } : edge,
+    edge.data?.boundary
+      ? { ...edge, type: 'smoothstep', style: { ...edge.style, opacity: 0.5 } }
+      : edge,
   )
 }
 
@@ -341,6 +359,12 @@ export function FamilyTreeCanvas({
  * are simply drawn normally). So the canvas carries a small list of the
  * tree's groups: collapse from here, and expand either from here or by
  * activating the collapsed group's node in the graph.
+ *
+ * The list itself is a disclosure. Left permanently open it took roughly
+ * a third of the width of a 375px screen and sat on top of the tree; on a
+ * phone it now starts as a single small button and opens over the canvas
+ * only while in use. On a wider screen there is room to leave it open, so
+ * it starts that way and stays glanceable.
  */
 function FamilyGroupTogglePanel({
   familyGroups,
@@ -351,29 +375,50 @@ function FamilyGroupTogglePanel({
   collapsedGroupIds: ReadonlySet<string>
   onToggle: (familyGroupId: string) => void
 }) {
+  const [isOpen, setIsOpen] = useState(
+    () => !window.matchMedia('(max-width: 480px)').matches,
+  )
+  const collapsedCount = familyGroups.filter((group) => collapsedGroupIds.has(group.id)).length
+
   return (
     <div className="tree-canvas__groups">
-      <p className="tree-canvas__groups-title">Family Groups</p>
-      <ul className="tree-canvas__groups-list">
-        {familyGroups.map((group) => {
-          const isExpanded = !collapsedGroupIds.has(group.id)
-          return (
-            <li key={group.id}>
-              <button
-                type="button"
-                className="tree-canvas__groups-toggle"
-                aria-expanded={isExpanded}
-                onClick={() => onToggle(group.id)}
-              >
-                <span className="tree-canvas__groups-disclosure" aria-hidden="true">
-                  {isExpanded ? '▼' : '▶'}
-                </span>
-                <span className="tree-canvas__groups-name">{group.name}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      <button
+        type="button"
+        className="tree-canvas__groups-summary"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <span className="tree-canvas__groups-disclosure" aria-hidden="true">
+          {isOpen ? '▼' : '▶'}
+        </span>
+        <span className="tree-canvas__groups-title">Family Groups</span>
+        <span className="tree-canvas__groups-badge">
+          {collapsedCount > 0 ? `${collapsedCount} collapsed` : familyGroups.length}
+        </span>
+      </button>
+
+      {isOpen && (
+        <ul className="tree-canvas__groups-list">
+          {familyGroups.map((group) => {
+            const isExpanded = !collapsedGroupIds.has(group.id)
+            return (
+              <li key={group.id}>
+                <button
+                  type="button"
+                  className="tree-canvas__groups-toggle"
+                  aria-expanded={isExpanded}
+                  onClick={() => onToggle(group.id)}
+                >
+                  <span className="tree-canvas__groups-disclosure" aria-hidden="true">
+                    {isExpanded ? '▼' : '▶'}
+                  </span>
+                  <span className="tree-canvas__groups-name">{group.name}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
