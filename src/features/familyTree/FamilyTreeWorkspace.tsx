@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { FamilyTree } from '../../types'
 import { DuplicateRelationshipError, InvalidRelationshipError } from '../../lib/storage'
 import { FamilyGroupDetail } from '../familyGroups/FamilyGroupDetail'
@@ -55,6 +55,7 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
   } = useFamilyGraph(tree.id)
   const {
     familyGroups,
+    members: familyGroupMembers,
     membersByGroupId,
     groupsByPersonId,
     addGroup,
@@ -66,6 +67,22 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
   const [view, setView] = useState<View>({ screen: 'home' })
   const [linkError, setLinkError] = useState<string | null>(null)
   const [isLinking, setIsLinking] = useState(false)
+  /**
+   * Which family groups are drawn collapsed in the tree view. Purely a
+   * visualization preference — deliberately NOT stored on FamilyGroup or
+   * in IndexedDB, since collapsing changes nothing about the genealogy.
+   * In-memory only for this phase; persistence comes later.
+   */
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<ReadonlySet<string>>(() => new Set())
+
+  const toggleFamilyGroup = useCallback((familyGroupId: string) => {
+    setCollapsedGroupIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(familyGroupId)) next.delete(familyGroupId)
+      else next.add(familyGroupId)
+      return next
+    })
+  }, [])
 
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people])
 
@@ -203,6 +220,10 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
             people={people}
             parentLinks={parentLinks}
             unions={unions}
+            familyGroups={familyGroups}
+            familyGroupMembers={familyGroupMembers}
+            collapsedGroupIds={collapsedGroupIds}
+            onToggleFamilyGroup={toggleFamilyGroup}
             onSelectPerson={openProfile}
             onBack={goHome}
           />

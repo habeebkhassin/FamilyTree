@@ -70,6 +70,79 @@
   border-color: var(--surface);
 }
 
+/*
+ * The collapse entry point. An expanded group draws no node of its own
+ * (its members are just people), so there has to be somewhere else to
+ * collapse it from — this list is that somewhere.
+ */
+.tree-canvas__groups {
+  max-width: 200px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.tree-canvas__groups-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.tree-canvas__groups-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.tree-canvas__groups-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tree-canvas__groups-toggle:hover {
+  background: var(--accent-bg);
+}
+
+.tree-canvas__groups-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tree-canvas__groups-disclosure {
+  flex-shrink: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.tree-canvas__groups-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
   .tree-canvas {
     padding: 12px 12px 16px;
@@ -81,5 +154,19 @@
   .tree-canvas .react-flow__controls-button {
     width: 34px;
     height: 34px;
+  }
+
+  .tree-canvas__groups {
+    max-width: 150px;
+    padding: 8px 10px;
+  }
+
+  .tree-canvas__groups-list {
+    max-height: 120px;
+  }
+
+  /* Comfortable touch target for each toggle row. */
+  .tree-canvas__groups-toggle {
+    padding: 9px 6px;
   }
 }

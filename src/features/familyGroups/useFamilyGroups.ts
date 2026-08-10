@@ -111,6 +111,8 @@ export function useFamilyGroups(familyTreeId: string) {
 
   return {
     familyGroups,
+    /** Raw membership rows — what the pure graph projection consumes; the maps below are UI conveniences derived from these. */
+    members,
     status,
     reload,
     membersByGroupId,

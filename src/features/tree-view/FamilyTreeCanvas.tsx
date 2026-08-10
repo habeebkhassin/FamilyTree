@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { Background, Controls, Panel, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import type { Node, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import type { ParentLink, Person, Union } from '../../types'
+import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
 import { buildFamilyGraph } from './graphAdapter'
+import { projectFamilyGroups } from './groupProjection'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
+import { FamilyGroupHeader, FamilyGroupNode } from './FamilyGroupNode'
+import type { FamilyGroupHeaderNode } from './FamilyGroupNode'
 import { GenerationLabel } from './GenerationLabel'
 import type { GenerationLabelNode } from './GenerationLabel'
 import { GenerationBand } from './GenerationBand'
 import type { GenerationBandNode } from './GenerationBand'
-import { PERSON_NODE_SIZE, JUNCTION_SIZE, GENERATION_ROW_HEIGHT } from './layout'
-import type { FamilyNode } from './types'
+import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth } from './layout'
+import { computeRanks } from './rank'
+import type { FamilyEdge, FamilyNode } from './types'
 import './FamilyTreeCanvas.css'
 
 interface FamilyTreeCanvasProps {
   people: Person[]
   parentLinks: ParentLink[]
   unions: Union[]
+  familyGroups: FamilyGroup[]
+  familyGroupMembers: FamilyGroupMember[]
+  collapsedGroupIds: ReadonlySet<string>
+  onToggleFamilyGroup: (familyGroupId: string) => void
   onSelectPerson: (personId: string) => void
   onBack: () => void
   /**
@@ -35,6 +43,8 @@ interface FamilyTreeCanvasProps {
 const NODE_TYPES = {
   person: PersonNode,
   unionJunction: UnionJunctionNode,
+  familyGroup: FamilyGroupNode,
+  familyGroupHeader: FamilyGroupHeader,
   generationLabel: GenerationLabel,
   generationBand: GenerationBand,
 }
@@ -42,27 +52,96 @@ const NODE_TYPES = {
 const GENERATION_LABEL_WIDTH = 64
 const GENERATION_LABEL_GAP = 16
 const BAND_SIDE_PADDING = 24
+/** Lifts an expanded group's header into the empty gutter above its first row, so it never collides with the row above. */
+const GROUP_HEADER_OFFSET = 34
 
-function nodeWidth(node: FamilyNode): number {
-  return node.type === 'unionJunction' ? JUNCTION_SIZE : PERSON_NODE_SIZE.width
+/**
+ * One control per EXPANDED group, sitting just above its topmost member.
+ * Computed from already-laid-out positions and never fed back into the
+ * graph — the same render-time-overlay pattern as the generation bands,
+ * so it takes no part in ranking, layout, or the projection.
+ */
+function buildFamilyGroupHeaders(
+  nodes: FamilyNode[],
+  familyGroups: FamilyGroup[],
+  familyGroupMembers: FamilyGroupMember[],
+  collapsedGroupIds: ReadonlySet<string>,
+): FamilyGroupHeaderNode[] {
+  if (nodes.length === 0) return []
+
+  const positionById = new Map(nodes.map((node) => [node.id, node.position]))
+  const personIdsByGroupId = new Map<string, Set<string>>()
+  for (const member of familyGroupMembers) {
+    const ids = personIdsByGroupId.get(member.familyGroupId) ?? new Set<string>()
+    ids.add(member.personId)
+    personIdsByGroupId.set(member.familyGroupId, ids)
+  }
+
+  const headers: FamilyGroupHeaderNode[] = []
+  for (const group of familyGroups) {
+    if (collapsedGroupIds.has(group.id)) continue
+    const memberIds = personIdsByGroupId.get(group.id) ?? new Set<string>()
+    const positions = [...memberIds]
+      .map((personId) => positionById.get(personId))
+      .filter((position): position is { x: number; y: number } => position !== undefined)
+    // A group with nobody currently on screen has nothing to label; the
+    // toggle list in the corner remains the way to reach it.
+    if (positions.length === 0) continue
+
+    headers.push({
+      id: `group-header:${group.id}`,
+      type: 'familyGroupHeader',
+      position: {
+        x: Math.min(...positions.map((position) => position.x)),
+        y: Math.min(...positions.map((position) => position.y)) - GROUP_HEADER_OFFSET,
+      },
+      selectable: false,
+      draggable: false,
+      data: { familyGroup: group, memberCount: memberIds.size },
+    })
+  }
+  return headers
+}
+
+/**
+ * Which rows a node occupies horizontally. Almost every node sits on one
+ * row, but a collapsed group container reaches across every generation
+ * its members span — so the rows underneath it have to know it is there,
+ * or their bands and labels get drawn straight through it.
+ */
+function rowContributions(node: FamilyNode): { y: number; left: number; right: number }[] {
+  const left = node.position.x
+  const right = left + nodeWidth(node)
+  if (node.type !== 'familyGroup') return [{ y: node.position.y, left, right }]
+
+  const rowCount = Math.max(node.data.maxRank - node.data.minRank, 0) + 1
+  return Array.from({ length: rowCount }, (_unused, index) => ({
+    y: node.position.y + index * GENERATION_ROW_HEIGHT,
+    left,
+    right,
+  }))
+}
+
+function measureRows(nodes: FamilyNode[]): Map<number, { minX: number; maxRight: number }> {
+  const rowExtent = new Map<number, { minX: number; maxRight: number }>()
+  for (const node of nodes) {
+    for (const { y, left, right } of rowContributions(node)) {
+      const current = rowExtent.get(y)
+      if (!current) rowExtent.set(y, { minX: left, maxRight: right })
+      else {
+        current.minX = Math.min(current.minX, left)
+        current.maxRight = Math.max(current.maxRight, right)
+      }
+    }
+  }
+  return rowExtent
 }
 
 /** One full-width tinted band per row, tiling seamlessly top-to-bottom (band height == row height) so alternating rows read as a subtle guide without any gap or overlap between them. */
 function buildGenerationBands(nodes: FamilyNode[]): GenerationBandNode[] {
   if (nodes.length === 0) return []
 
-  const rowExtent = new Map<number, { minX: number; maxRight: number }>()
-  for (const node of nodes) {
-    const { x, y } = node.position
-    const right = x + nodeWidth(node)
-    const current = rowExtent.get(y)
-    if (!current) rowExtent.set(y, { minX: x, maxRight: right })
-    else {
-      current.minX = Math.min(current.minX, x)
-      current.maxRight = Math.max(current.maxRight, right)
-    }
-  }
-
+  const rowExtent = measureRows(nodes)
   const sortedRowYs = [...rowExtent.keys()].sort((a, b) => a - b)
   return sortedRowYs.map((y, index) => {
     const { minX, maxRight } = rowExtent.get(y) as { minX: number; maxRight: number }
@@ -84,22 +163,29 @@ function buildGenerationBands(nodes: FamilyNode[]): GenerationBandNode[] {
 function buildGenerationLabels(nodes: FamilyNode[]): GenerationLabelNode[] {
   if (nodes.length === 0) return []
 
-  const minXByRow = new Map<number, number>()
-  for (const node of nodes) {
-    const { x, y } = node.position
-    const currentMin = minXByRow.get(y)
-    if (currentMin === undefined || x < currentMin) minXByRow.set(y, x)
-  }
-
-  const sortedRowYs = [...minXByRow.keys()].sort((a, b) => a - b)
+  const rowExtent = measureRows(nodes)
+  const sortedRowYs = [...rowExtent.keys()].sort((a, b) => a - b)
   return sortedRowYs.map((y, index) => ({
     id: `generation-label:${y}`,
     type: 'generationLabel',
-    position: { x: (minXByRow.get(y) ?? 0) - GENERATION_LABEL_WIDTH - GENERATION_LABEL_GAP, y },
+    position: { x: (rowExtent.get(y)?.minX ?? 0) - GENERATION_LABEL_WIDTH - GENERATION_LABEL_GAP, y },
     selectable: false,
     draggable: false,
     data: { text: `Gen ${index + 1}` },
   }))
+}
+
+/**
+ * A boundary edge stands for a relationship belonging to someone inside a
+ * collapsed group, not to the group itself — so it is drawn in the same
+ * vocabulary as the real edge it came from, just quieter. Deliberately no
+ * label: Phase 4D removed per-instance edge text because it became noise,
+ * and this would reintroduce exactly that.
+ */
+function applyBoundaryEdgeStyle(edges: FamilyEdge[]): FamilyEdge[] {
+  return edges.map((edge) =>
+    edge.data?.boundary ? { ...edge, style: { ...edge.style, opacity: 0.55 } } : edge,
+  )
 }
 
 /** Centers the viewport on a single node when `focalPersonId` resolves to one currently on screen. Must render inside ReactFlowProvider. */
@@ -119,13 +205,30 @@ export function FamilyTreeCanvas({
   people,
   parentLinks,
   unions,
+  familyGroups,
+  familyGroupMembers,
+  collapsedGroupIds,
+  onToggleFamilyGroup,
   onSelectPerson,
   onBack,
   focalPersonId,
 }: FamilyTreeCanvasProps) {
-  const { nodes: rawNodes, edges } = useMemo(
+  const baseGraph = useMemo(
     () => buildFamilyGraph(people, parentLinks, unions),
     [people, parentLinks, unions],
+  )
+
+  // Ranks come from the genealogy graph and are computed BEFORE any group
+  // is projected, then handed to layout unchanged. That is what makes a
+  // person's generation independent of what happens to be collapsed.
+  const genealogyRanks = useMemo(() => computeRanks(baseGraph.nodes, baseGraph.edges), [baseGraph])
+
+  // The genealogy graph is built first and never altered; collapsing is a
+  // pure projection layered on top of it, so toggling a group can only
+  // ever change what is drawn — never a ParentLink, Union, or membership.
+  const projectedGraph = useMemo(
+    () => projectFamilyGroups(baseGraph, familyGroups, familyGroupMembers, collapsedGroupIds, genealogyRanks),
+    [baseGraph, familyGroups, familyGroupMembers, collapsedGroupIds, genealogyRanks],
   )
 
   const [layoutedNodes, setLayoutedNodes] = useState<FamilyNode[]>([])
@@ -134,7 +237,7 @@ export function FamilyTreeCanvas({
   useEffect(() => {
     let cancelled = false
     setIsLayouting(true)
-    layoutFamilyGraph(rawNodes, edges).then((positioned) => {
+    layoutFamilyGraph(projectedGraph.nodes, projectedGraph.edges, projectedGraph.ranks).then((positioned) => {
       if (cancelled) return
       setLayoutedNodes(positioned)
       setIsLayouting(false)
@@ -142,17 +245,48 @@ export function FamilyTreeCanvas({
     return () => {
       cancelled = true
     }
-  }, [rawNodes, edges])
+  }, [projectedGraph])
+
+  const edges = useMemo(() => applyBoundaryEdgeStyle(projectedGraph.edges), [projectedGraph])
 
   const generationLabels = useMemo(() => buildGenerationLabels(layoutedNodes), [layoutedNodes])
   const generationBands = useMemo(() => buildGenerationBands(layoutedNodes), [layoutedNodes])
-  const displayNodes = useMemo<Node[]>(
-    () => [...generationBands, ...layoutedNodes, ...generationLabels],
-    [generationBands, layoutedNodes, generationLabels],
+
+  // The toggle is injected here rather than produced by the projection —
+  // groupProjection.ts stays a pure data transform with no UI concerns.
+  const interactiveNodes = useMemo<Node[]>(
+    () =>
+      layoutedNodes.map((node) =>
+        node.type === 'familyGroup'
+          ? {
+              ...node,
+              // The container reaches across every generation its members
+              // occupy, so its height is derived from that span.
+              style: { height: familyGroupNodeHeight(node.data.minRank, node.data.maxRank) },
+              data: { ...node.data, onToggle: () => onToggleFamilyGroup(node.data.familyGroup.id) },
+            }
+          : node,
+      ),
+    [layoutedNodes, onToggleFamilyGroup],
   )
 
-  // Junctions (and generation labels) are never Persons — selecting one
-  // must never reach the People/Profile system.
+  const groupHeaders = useMemo<Node[]>(
+    () =>
+      buildFamilyGroupHeaders(layoutedNodes, familyGroups, familyGroupMembers, collapsedGroupIds).map((header) => ({
+        ...header,
+        data: { ...header.data, onToggle: () => onToggleFamilyGroup(header.data.familyGroup.id) },
+      })),
+    [layoutedNodes, familyGroups, familyGroupMembers, collapsedGroupIds, onToggleFamilyGroup],
+  )
+
+  const displayNodes = useMemo<Node[]>(
+    () => [...generationBands, ...interactiveNodes, ...generationLabels, ...groupHeaders],
+    [generationBands, interactiveNodes, generationLabels, groupHeaders],
+  )
+
+  // Only a person opens a profile. Family groups toggle via their own
+  // button (so keyboard activation works), junctions and the generation
+  // overlays do nothing at all.
   const handleNodeClick: NodeMouseHandler = (_event, node) => {
     if (node.type === 'person') {
       onSelectPerson(node.id)
@@ -183,11 +317,63 @@ export function FamilyTreeCanvas({
             >
               <Background gap={24} />
               <Controls showInteractive={false} />
+              {familyGroups.length > 0 && (
+                <Panel position="top-right">
+                  <FamilyGroupTogglePanel
+                    familyGroups={familyGroups}
+                    collapsedGroupIds={collapsedGroupIds}
+                    onToggle={onToggleFamilyGroup}
+                  />
+                </Panel>
+              )}
               <FocalPersonCenterer focalPersonId={focalPersonId} nodes={layoutedNodes} />
             </ReactFlow>
           </ReactFlowProvider>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Collapsing needs an entry point that exists while a group is EXPANDED —
+ * and an expanded group has no node on the canvas by design (its members
+ * are simply drawn normally). So the canvas carries a small list of the
+ * tree's groups: collapse from here, and expand either from here or by
+ * activating the collapsed group's node in the graph.
+ */
+function FamilyGroupTogglePanel({
+  familyGroups,
+  collapsedGroupIds,
+  onToggle,
+}: {
+  familyGroups: FamilyGroup[]
+  collapsedGroupIds: ReadonlySet<string>
+  onToggle: (familyGroupId: string) => void
+}) {
+  return (
+    <div className="tree-canvas__groups">
+      <p className="tree-canvas__groups-title">Family Groups</p>
+      <ul className="tree-canvas__groups-list">
+        {familyGroups.map((group) => {
+          const isExpanded = !collapsedGroupIds.has(group.id)
+          return (
+            <li key={group.id}>
+              <button
+                type="button"
+                className="tree-canvas__groups-toggle"
+                aria-expanded={isExpanded}
+                onClick={() => onToggle(group.id)}
+              >
+                <span className="tree-canvas__groups-disclosure" aria-hidden="true">
+                  {isExpanded ? '▼' : '▶'}
+                </span>
+                <span className="tree-canvas__groups-name">{group.name}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
