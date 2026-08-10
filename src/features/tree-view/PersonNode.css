@@ -1,9 +1,8 @@
 .person-node {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 10px;
   width: 180px;
   min-height: 72px;
   padding: 10px 14px;
@@ -11,18 +10,36 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
-  text-align: center;
+  text-align: left;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.person-node:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-hover);
 }
 
 .person-node--selected {
   border-color: var(--accent);
 }
 
+.person-node__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .person-node__name {
   font-family: var(--font-heading);
   font-size: 14px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .person-node__years {
@@ -36,4 +53,21 @@
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .person-node {
+    width: 148px;
+    min-height: 64px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .person-node__name {
+    font-size: 13px;
+  }
+
+  .person-node__years {
+    font-size: 11px;
+  }
 }

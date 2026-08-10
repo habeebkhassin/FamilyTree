@@ -7,3 +7,12 @@
   transform: rotate(45deg);
   box-shadow: var(--shadow);
 }
+
+@media (max-width: 480px) {
+  .union-junction {
+    /* Slightly larger for visibility on small screens — still a small
+       diamond, not a card, so it never reads as a third "person". */
+    width: 13px;
+    height: 13px;
+  }
+}

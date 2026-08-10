@@ -15,6 +15,7 @@
   --danger: #b23b3b;
   --danger-hover: #9a3131;
   --shadow: 0 1px 2px rgba(43, 38, 32, 0.04), 0 8px 24px rgba(43, 38, 32, 0.06);
+  --shadow-hover: 0 2px 4px rgba(43, 38, 32, 0.08), 0 12px 28px rgba(43, 38, 32, 0.1);
   --radius: 14px;
   --radius-sm: 8px;
 
@@ -42,6 +43,7 @@
     --danger: #e08080;
     --danger-hover: #e69a9a;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.28), 0 12px 32px rgba(0, 0, 0, 0.42);
   }
 }
 

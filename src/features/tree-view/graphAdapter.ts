@@ -1,10 +1,32 @@
-import type { ParentLink, Person, Union } from '../../types'
+import type { ParentLink, ParentRelationship, Person, Union, UnionStatus } from '../../types'
 import { resolveUnionForParentLink } from './unionSelection'
 import type { FamilyEdge, FamilyGraph, PersonNode, UnionJunctionNode } from './types'
 
 function junctionId(unionId: string): string {
   return `junction:${unionId}`
 }
+
+// Biological and married are the unmarked default (no label) — matches
+// the same "only call out the exception" philosophy already used for
+// these fields in features/people/personDisplay.ts. Kept as a separate,
+// small, local map rather than importing that module, so tree-view has
+// no dependency on the people feature.
+const PARENT_LINK_EDGE_LABEL: Partial<Record<ParentRelationship, string>> = {
+  adopted: 'Adopted',
+  step: 'Step',
+  foster: 'Foster',
+}
+
+const UNION_EDGE_LABEL: Partial<Record<UnionStatus, string>> = {
+  partnered: 'Partnered',
+  engaged: 'Engaged',
+  divorced: 'Divorced',
+  separated: 'Separated',
+  widowed: 'Widowed',
+}
+
+const EDGE_LABEL_STYLE = { fill: 'var(--text-secondary)', fontSize: 11 }
+const EDGE_LABEL_BG_STYLE = { fill: 'var(--surface)', fillOpacity: 0.92 }
 
 /**
  * Pure transform: existing Person/ParentLink/Union records -> React Flow
@@ -54,6 +76,7 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
     const child = peopleById.get(link.childId)
     const siblingLinks = linksByChild.get(link.childId) ?? []
     const union = child ? resolveUnionForParentLink(link, siblingLinks, unions, child) : undefined
+    const label = PARENT_LINK_EDGE_LABEL[link.relationship]
 
     return {
       id: link.id,
@@ -61,6 +84,7 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
       target: link.childId,
       type: 'smoothstep',
       style: { stroke: 'var(--text-secondary)', strokeWidth: 1.5 },
+      ...(label && { label, labelStyle: EDGE_LABEL_STYLE, labelBgStyle: EDGE_LABEL_BG_STYLE }),
       data: {
         kind: 'parentChild',
         parentLinkId: link.id,
@@ -81,6 +105,9 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
       endDate: union.endDate,
     }
     const style = { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '4 4' }
+    // Only one segment carries the status label — showing it on both
+    // sides of the same junction would just duplicate the text.
+    const label = UNION_EDGE_LABEL[union.status]
 
     return [
       {
@@ -89,6 +116,7 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
         target: junction,
         type: 'straight',
         style,
+        ...(label && { label, labelStyle: EDGE_LABEL_STYLE, labelBgStyle: EDGE_LABEL_BG_STYLE }),
         data: { ...baseData, segment: 'a' as const },
       },
       {
