@@ -1,0 +1,39 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.field__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.field__hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.field input,
+.field textarea {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+}
