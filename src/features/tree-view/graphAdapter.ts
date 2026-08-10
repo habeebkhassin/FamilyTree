@@ -17,16 +17,28 @@ const PARENT_LINK_EDGE_LABEL: Partial<Record<ParentRelationship, string>> = {
   foster: 'Foster',
 }
 
-const UNION_EDGE_LABEL: Partial<Record<UnionStatus, string>> = {
-  partnered: 'Partnered',
-  engaged: 'Engaged',
-  divorced: 'Divorced',
-  separated: 'Separated',
-  widowed: 'Widowed',
-}
-
 const EDGE_LABEL_STYLE = { fill: 'var(--text-secondary)', fontSize: 11 }
 const EDGE_LABEL_BG_STYLE = { fill: 'var(--surface)', fillOpacity: 0.92 }
+
+// Non-biological ParentLinks keep their text label (rare, meaningful)
+// but also get a dotted stroke so the distinction still reads at a
+// glance without leaning on the label alone.
+const NON_BIOLOGICAL_PARENT_LINK_DASH = '2 3'
+
+// Married is the quiet, unmarked default for a Union -- same plain
+// solid line as a biological ParentLink. Every other status gets a
+// restrained dashed line instead of a per-instance text label: real
+// data showed most/all recorded unions share one status (every one was
+// "Partnered"), so repeating that word at every junction was noise, not
+// information. Ended statuses read as "no longer current" via a muted
+// stroke color rather than another word.
+const ENDED_UNION_STATUSES = new Set<UnionStatus>(['divorced', 'separated', 'widowed'])
+
+function unionEdgeStyle(status: UnionStatus): { stroke: string; strokeWidth: number; strokeDasharray?: string } {
+  if (status === 'married') return { stroke: 'var(--text-secondary)', strokeWidth: 1.5 }
+  const stroke = ENDED_UNION_STATUSES.has(status) ? 'var(--text-secondary)' : 'var(--accent)'
+  return { stroke, strokeWidth: 1.5, strokeDasharray: '4 4' }
+}
 
 /**
  * Pure transform: existing Person/ParentLink/Union records -> React Flow
@@ -83,7 +95,11 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
       source: union ? junctionId(union.id) : link.parentId,
       target: link.childId,
       type: 'smoothstep',
-      style: { stroke: 'var(--text-secondary)', strokeWidth: 1.5 },
+      style: {
+        stroke: 'var(--text-secondary)',
+        strokeWidth: 1.5,
+        ...(label && { strokeDasharray: NON_BIOLOGICAL_PARENT_LINK_DASH }),
+      },
       ...(label && { label, labelStyle: EDGE_LABEL_STYLE, labelBgStyle: EDGE_LABEL_BG_STYLE }),
       data: {
         kind: 'parentChild',
@@ -104,10 +120,7 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
       startDate: union.startDate,
       endDate: union.endDate,
     }
-    const style = { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '4 4' }
-    // Only one segment carries the status label — showing it on both
-    // sides of the same junction would just duplicate the text.
-    const label = UNION_EDGE_LABEL[union.status]
+    const style = unionEdgeStyle(union.status)
 
     return [
       {
@@ -116,7 +129,6 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
         target: junction,
         type: 'straight',
         style,
-        ...(label && { label, labelStyle: EDGE_LABEL_STYLE, labelBgStyle: EDGE_LABEL_BG_STYLE }),
         data: { ...baseData, segment: 'a' as const },
       },
       {

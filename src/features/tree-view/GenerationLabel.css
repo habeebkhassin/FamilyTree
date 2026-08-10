@@ -2,11 +2,14 @@
   display: flex;
   align-items: center;
   height: 72px;
-  font-size: 11px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
+  opacity: 0.85;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -14,6 +17,6 @@
 @media (max-width: 480px) {
   .generation-label {
     height: 64px;
-    font-size: 10px;
+    font-size: 9px;
   }
 }

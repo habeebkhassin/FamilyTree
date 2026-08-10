@@ -3,7 +3,7 @@
   flex-direction: row;
   align-items: center;
   gap: 10px;
-  width: 180px;
+  width: 160px;
   min-height: 72px;
   padding: 10px 14px;
   background: var(--surface);
