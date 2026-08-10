@@ -6,7 +6,8 @@ import type { ParentLink, Person, Union } from '../../types'
 import { buildFamilyGraph } from './graphAdapter'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
-import type { PersonNode as PersonNodeType } from './types'
+import { UnionJunctionNode } from './UnionJunctionNode'
+import type { FamilyNode } from './types'
 import './FamilyTreeCanvas.css'
 
 interface FamilyTreeCanvasProps {
@@ -19,7 +20,7 @@ interface FamilyTreeCanvasProps {
 
 // Stable across renders/instances — React Flow warns (and re-renders
 // needlessly) if nodeTypes changes identity on every render.
-const NODE_TYPES = { person: PersonNode }
+const NODE_TYPES = { person: PersonNode, unionJunction: UnionJunctionNode }
 
 export function FamilyTreeCanvas({ people, parentLinks, unions, onSelectPerson, onBack }: FamilyTreeCanvasProps) {
   const { nodes: rawNodes, edges } = useMemo(
@@ -27,7 +28,7 @@ export function FamilyTreeCanvas({ people, parentLinks, unions, onSelectPerson, 
     [people, parentLinks, unions],
   )
 
-  const [layoutedNodes, setLayoutedNodes] = useState<PersonNodeType[]>([])
+  const [layoutedNodes, setLayoutedNodes] = useState<FamilyNode[]>([])
   const [isLayouting, setIsLayouting] = useState(true)
 
   useEffect(() => {
@@ -43,8 +44,12 @@ export function FamilyTreeCanvas({ people, parentLinks, unions, onSelectPerson, 
     }
   }, [rawNodes, edges])
 
-  const handleNodeClick: NodeMouseHandler<PersonNodeType> = (_event, node) => {
-    onSelectPerson(node.id)
+  // Junctions are never Persons — selecting one must never reach the
+  // People/Profile system.
+  const handleNodeClick: NodeMouseHandler<FamilyNode> = (_event, node) => {
+    if (node.type === 'person') {
+      onSelectPerson(node.id)
+    }
   }
 
   return (

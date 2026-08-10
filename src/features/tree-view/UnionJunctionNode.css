@@ -1,0 +1,9 @@
+.union-junction {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  border-radius: 2px;
+  transform: rotate(45deg);
+  box-shadow: var(--shadow);
+}
