@@ -17,7 +17,8 @@
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -28,7 +29,8 @@
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   border-color: var(--accent);
 }
 

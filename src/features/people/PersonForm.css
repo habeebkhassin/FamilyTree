@@ -1,0 +1,77 @@
+.person-form {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.person-form__card {
+  width: 100%;
+  max-width: 520px;
+  text-align: left;
+}
+
+.person-form__eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.person-form__title {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.person-form__subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.person-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.person-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.person-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.person-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .person-form__card {
+    padding: 24px;
+  }
+
+  .person-form__row {
+    grid-template-columns: 1fr;
+  }
+
+  .person-form__actions {
+    flex-direction: column-reverse;
+  }
+
+  .person-form__actions .button {
+    width: 100%;
+  }
+}

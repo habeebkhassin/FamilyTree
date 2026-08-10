@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { WelcomeScreen } from './features/familyTree/WelcomeScreen'
-import { FamilyTreeHome } from './features/familyTree/FamilyTreeHome'
+import { FamilyTreeWorkspace } from './features/familyTree/FamilyTreeWorkspace'
 import { LoadingScreen } from './features/familyTree/LoadingScreen'
 import {
   createFamilyTree,
@@ -54,7 +54,7 @@ function App() {
   }
 
   if (status === 'loading') return <LoadingScreen />
-  if (status === 'ready' && activeTree) return <FamilyTreeHome tree={activeTree} />
+  if (status === 'ready' && activeTree) return <FamilyTreeWorkspace tree={activeTree} />
   return <WelcomeScreen onCreate={handleCreateFamilyTree} />
 }
 

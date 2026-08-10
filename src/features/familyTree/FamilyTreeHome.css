@@ -1,12 +1,12 @@
 .home {
   flex: 1;
-  max-width: 720px;
+  max-width: 880px;
   width: 100%;
   margin: 0 auto;
   padding: 48px 24px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 28px;
 }
 
 .home__eyebrow {
@@ -27,17 +27,47 @@
   margin-top: 8px;
 }
 
-.home__placeholder {
-  text-align: center;
-}
-
-.home__placeholder-title {
-  font-size: 20px;
-  margin-bottom: 10px;
-}
-
-.home__placeholder-text {
+.home__status,
+.home__count {
   color: var(--text-secondary);
+}
+
+.home__status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.home__empty {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 32px;
+}
+
+.home__empty-title {
+  font-size: 22px;
+}
+
+.home__empty-text {
+  color: var(--text-secondary);
+  max-width: 420px;
+}
+
+.home__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
 }
 
 @media (max-width: 480px) {
@@ -47,5 +77,10 @@
 
   .home__title {
     font-size: 26px;
+  }
+
+  .home__toolbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

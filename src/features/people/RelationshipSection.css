@@ -1,0 +1,44 @@
+.relationship-section {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+}
+
+.relationship-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.relationship-section__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.relationship-section__add {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.relationship-section__add:hover {
+  text-decoration: underline;
+}
+
+.relationship-section__empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.relationship-section__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}

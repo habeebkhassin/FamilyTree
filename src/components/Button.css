@@ -42,3 +42,15 @@
 .button--secondary:not(:disabled):hover {
   border-color: var(--accent);
 }
+
+.button--danger {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--danger);
+}
+
+.button--danger:not(:disabled):hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--accent-contrast);
+}
