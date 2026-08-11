@@ -57,6 +57,21 @@ To enable Pages on GitHub: **Settings → Pages → Source → GitHub Actions**.
   holds a `profilePhotoId` pointing at a `MediaRecord`. Keeps the core
   records small and portable, and leaves room for photos/audio/video later
   without a rewrite.
+- **Change log** — `src/lib/sync/` sits *beneath* the storage API. Every
+  mutation writes its record and appends an immutable `ChangeEvent` in one
+  transaction, so the data and its history can never disagree. Events are
+  append-only: undo applies the inverse mutation and records a *new* event
+  rather than editing the original. Deletion writes a `deletedAt` tombstone
+  instead of removing the row, so history stays recoverable — storage
+  readers filter tombstones out, so nothing above them ever sees one.
+  `clientSeq` orders events from this device; `serverSeq` is reserved for a
+  future server and is always `null` today. The `outbox` records what would
+  need uploading — there is no network, no account and no backend yet, and
+  a tree with no owner is a perfectly valid local tree.
+- **Derived logic stays independent** — `relationshipResolver`,
+  `groupProjection`, `rank`, `layout` and `graphAdapter` take plain record
+  snapshots and know nothing about storage, events or sync. That is what
+  will let them run unchanged against synced data later.
 
 ## Current status: Phase 1 — Foundation
 

@@ -1,4 +1,5 @@
 import { db } from './db'
+import { SYNC_TABLES } from './internal'
 import { createPerson } from './people'
 import type { CreatePersonInput } from './people'
 import { createParentLink, createUnion, DuplicateRelationshipError } from './relationships'
@@ -105,7 +106,11 @@ export async function createPersonWithRelationship(
   anchorPersonId: string,
   link: RelativeLinkKind,
 ): Promise<Person> {
-  return db.transaction('rw', db.people, db.parentLinks, db.unions, async () => {
+  // The change-log tables are in scope so the events written by the
+  // nested createPerson/createParentLink calls join this same transaction:
+  // the person, the relationship and both of their events commit together
+  // or not at all.
+  return db.transaction('rw', [db.people, db.parentLinks, db.unions, ...SYNC_TABLES], async () => {
     const person = await createPerson(personInput)
     await linkRelative(personInput.familyTreeId, anchorPersonId, person.id, link)
     return person
