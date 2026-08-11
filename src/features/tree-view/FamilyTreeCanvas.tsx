@@ -16,6 +16,8 @@ import { GenerationBand } from './GenerationBand'
 import type { GenerationBandNode } from './GenerationBand'
 import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth } from './layout'
 import { computeRanks } from './rank'
+import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
+import { RelationshipPanel } from '../relationships/RelationshipPanel'
 import type { FamilyEdge, FamilyNode } from './types'
 import './FamilyTreeCanvas.css'
 
@@ -252,6 +254,44 @@ export function FamilyTreeCanvas({
   const [layoutedNodes, setLayoutedNodes] = useState<FamilyNode[]>([])
   const [isLayouting, setIsLayouting] = useState(true)
 
+  /**
+   * Comparison is an explicit mode rather than a modifier key: a plain
+   * click must keep opening a profile (and there is no modifier key to
+   * hold on a phone). While it is on, clicking people picks the pair
+   * instead of navigating away from the tree.
+   */
+  const [isComparing, setIsComparing] = useState(false)
+  const [comparisonIds, setComparisonIds] = useState<string[]>([])
+  const [preferredByPair, setPreferredByPair] = useState<Record<string, string>>({})
+
+  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people])
+  const [comparisonAId, comparisonBId] = comparisonIds
+  const comparisonPairKey = comparisonIds.length === 2 ? [...comparisonIds].sort().join('|') : null
+
+  /**
+   * Resolved from the UNDERLYING genealogy, never from the projected
+   * graph — collapsing a family group is a drawing decision and must not
+   * change what two people are to each other. Only runs when a full pair
+   * is selected or the records themselves change.
+   */
+  const relationships = useMemo(() => {
+    if (!comparisonAId || !comparisonBId) return []
+    return resolveRelationships(comparisonAId, comparisonBId, { people, parentLinks, unions })
+  }, [comparisonAId, comparisonBId, people, parentLinks, unions])
+
+  function toggleComparisonMode() {
+    setIsComparing((comparing) => !comparing)
+    setComparisonIds([])
+  }
+
+  function pickForComparison(personId: string) {
+    setComparisonIds((current) => {
+      if (current.includes(personId)) return current.filter((id) => id !== personId)
+      // A third pick starts a fresh pair from that person.
+      return current.length >= 2 ? [personId] : [...current, personId]
+    })
+  }
+
   useEffect(() => {
     let cancelled = false
     setIsLayouting(true)
@@ -274,18 +314,25 @@ export function FamilyTreeCanvas({
   // groupProjection.ts stays a pure data transform with no UI concerns.
   const interactiveNodes = useMemo<Node[]>(
     () =>
-      layoutedNodes.map((node) =>
-        node.type === 'familyGroup'
-          ? {
-              ...node,
-              // The container reaches across every generation its members
-              // occupy, so its height is derived from that span.
-              style: { height: familyGroupNodeHeight(node.data.minRank, node.data.maxRank) },
-              data: { ...node.data, onToggle: () => onToggleFamilyGroup(node.data.familyGroup.id) },
-            }
-          : node,
-      ),
-    [layoutedNodes, onToggleFamilyGroup],
+      layoutedNodes.map((node) => {
+        if (node.type === 'familyGroup') {
+          return {
+            ...node,
+            // The container reaches across every generation its members
+            // occupy, so its height is derived from that span.
+            style: { height: familyGroupNodeHeight(node.data.minRank, node.data.maxRank) },
+            data: { ...node.data, onToggle: () => onToggleFamilyGroup(node.data.familyGroup.id) },
+          }
+        }
+        if (node.type === 'person') {
+          const index = comparisonIds.indexOf(node.id)
+          if (index !== -1) {
+            return { ...node, data: { ...node.data, comparisonRole: index === 0 ? 'a' : 'b' } }
+          }
+        }
+        return node
+      }),
+    [layoutedNodes, onToggleFamilyGroup, comparisonIds],
   )
 
   const groupHeaders = useMemo<Node[]>(
@@ -302,13 +349,15 @@ export function FamilyTreeCanvas({
     [generationBands, interactiveNodes, generationLabels, groupHeaders],
   )
 
-  // Only a person opens a profile. Family groups toggle via their own
+  // Only a person is interactive here. Family groups toggle via their own
   // button (so keyboard activation works), junctions and the generation
-  // overlays do nothing at all.
+  // overlays do nothing at all. In comparison mode a person is picked for
+  // the pair instead of opening their profile — the normal single click
+  // is never repurposed silently.
   const handleNodeClick: NodeMouseHandler = (_event, node) => {
-    if (node.type === 'person') {
-      onSelectPerson(node.id)
-    }
+    if (node.type !== 'person') return
+    if (isComparing) pickForComparison(node.id)
+    else onSelectPerson(node.id)
   }
 
   return (
@@ -335,6 +384,18 @@ export function FamilyTreeCanvas({
             >
               <Background gap={24} />
               <Controls showInteractive={false} />
+              <Panel position="top-left">
+                <button
+                  type="button"
+                  className={
+                    isComparing ? 'tree-canvas__compare tree-canvas__compare--on' : 'tree-canvas__compare'
+                  }
+                  aria-pressed={isComparing}
+                  onClick={toggleComparisonMode}
+                >
+                  {isComparing ? 'Comparing — pick two people' : 'Compare people'}
+                </button>
+              </Panel>
               {familyGroups.length > 0 && (
                 <Panel position="top-right">
                   <FamilyGroupTogglePanel
@@ -347,6 +408,22 @@ export function FamilyTreeCanvas({
               <FocalPersonCenterer focalPersonId={focalPersonId} nodes={layoutedNodes} />
             </ReactFlow>
           </ReactFlowProvider>
+        )}
+
+        {comparisonPairKey && comparisonAId && comparisonBId && (
+          <RelationshipPanel
+            personA={peopleById.get(comparisonAId) as Person}
+            personB={peopleById.get(comparisonBId) as Person}
+            relationships={relationships}
+            peopleById={peopleById}
+            preferredRelationshipId={
+              preferredByPair[comparisonPairKey] ?? relationships[0]?.id ?? null
+            }
+            onSelectPreferred={(relationshipId) =>
+              setPreferredByPair((current) => ({ ...current, [comparisonPairKey]: relationshipId }))
+            }
+            onClear={() => setComparisonIds([])}
+          />
         )}
       </div>
     </div>

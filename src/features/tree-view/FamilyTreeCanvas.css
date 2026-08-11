@@ -71,6 +71,42 @@
 }
 
 /*
+ * Comparison is opt-in, so a plain click keeps opening a profile. The
+ * button states which mode you are in rather than relying on a modifier
+ * key, which a phone does not have.
+ */
+.tree-canvas__compare {
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.tree-canvas__compare:hover {
+  border-color: var(--accent);
+}
+
+.tree-canvas__compare:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tree-canvas__compare--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/*
  * The collapse entry point. An expanded group draws no node of its own
  * (its members are just people), so there has to be somewhere else to
  * collapse it from — this list is that somewhere.
@@ -184,6 +220,13 @@
   .tree-canvas .react-flow__controls-button {
     width: 34px;
     height: 34px;
+  }
+
+  .tree-canvas__compare {
+    min-height: 44px;
+    max-width: 150px;
+    padding: 6px 10px;
+    font-size: 11px;
   }
 
   .tree-canvas__groups {

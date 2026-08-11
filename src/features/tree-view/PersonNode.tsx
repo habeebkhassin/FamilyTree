@@ -18,9 +18,20 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   const { person } = data
   const fullName = [person.firstName, person.lastName].filter(Boolean).join(' ')
   const years = formatNodeYears(person.birthDate, person.deathDate)
+  // Injected at render time while comparing two people — the graph itself
+  // has no notion of a comparison, so this never reaches the adapter.
+  const comparisonRole = typeof data.comparisonRole === 'string' ? data.comparisonRole : null
+
+  const classes = [
+    'person-node',
+    selected ? 'person-node--selected' : null,
+    comparisonRole ? 'person-node--comparing' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
-    <div className={selected ? 'person-node person-node--selected' : 'person-node'}>
+    <div className={classes}>
       <Handle type="target" position={Position.Top} />
       <Avatar name={fullName} size={36} />
       <div className="person-node__info">
@@ -28,6 +39,11 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
         {years && <span className="person-node__years">{years}</span>}
         {person.isPlaceholder && <span className="person-node__placeholder">Placeholder</span>}
       </div>
+      {comparisonRole && (
+        <span className="person-node__compare-badge" aria-hidden="true">
+          {comparisonRole === 'a' ? '1' : '2'}
+        </span>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   )

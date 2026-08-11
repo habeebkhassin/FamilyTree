@@ -1,4 +1,5 @@
 .person-node {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -24,6 +25,29 @@
 
 .person-node--selected {
   border-color: var(--accent);
+}
+
+/* Picked as one of the two people being compared. */
+.person-node--comparing {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-hover);
+}
+
+.person-node__compare-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .person-node__info {
