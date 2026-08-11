@@ -1,5 +1,5 @@
 import type { Person } from '../../types'
-import type { RelationshipKind, RelationshipPeriod } from './relationshipTypes'
+import type { LineageDistance, RelationshipKind, RelationshipPeriod } from './relationshipTypes'
 
 /**
  * Turns the resolver's neutral kinds into English. Kept separate from the
@@ -24,12 +24,10 @@ const NEUTRAL_LABEL: Record<RelationshipKind, string> = {
   sibling: 'Sibling',
   halfSibling: 'Half-sibling',
   stepSibling: 'Step-sibling',
-  grandparent: 'Grandparent',
-  grandchild: 'Grandchild',
-  greatGrandparent: 'Great-grandparent',
-  greatGrandchild: 'Great-grandchild',
+  ancestor: 'Grandparent',
+  descendant: 'Grandchild',
   auntUncle: 'Aunt / Uncle',
-  niblingByBlood: 'Niece / Nephew',
+  nibling: 'Niece / Nephew',
   auntUncleByMarriage: 'Aunt / Uncle by marriage',
   niblingByMarriage: 'Niece / Nephew by marriage',
   cousin: 'Cousin',
@@ -49,22 +47,86 @@ const GENDERED_LABEL: Partial<Record<RelationshipKind, { female: string; male: s
   sibling: { female: 'Sister', male: 'Brother' },
   halfSibling: { female: 'Half-sister', male: 'Half-brother' },
   stepSibling: { female: 'Stepsister', male: 'Stepbrother' },
-  grandparent: { female: 'Grandmother', male: 'Grandfather' },
-  grandchild: { female: 'Granddaughter', male: 'Grandson' },
-  greatGrandparent: { female: 'Great-grandmother', male: 'Great-grandfather' },
-  greatGrandchild: { female: 'Great-granddaughter', male: 'Great-grandson' },
+  ancestor: { female: 'Grandmother', male: 'Grandfather' },
+  descendant: { female: 'Granddaughter', male: 'Grandson' },
   auntUncle: { female: 'Aunt', male: 'Uncle' },
-  niblingByBlood: { female: 'Niece', male: 'Nephew' },
+  nibling: { female: 'Niece', male: 'Nephew' },
   auntUncleByMarriage: { female: 'Aunt by marriage', male: 'Uncle by marriage' },
   niblingByMarriage: { female: 'Niece by marriage', male: 'Nephew by marriage' },
   spouse: { female: 'Wife', male: 'Husband' },
+}
+
+const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth']
+const REMOVAL_WORDS = ['once', 'twice', 'three times', 'four times', 'five times']
+
+function ordinal(value: number): string {
+  return ORDINALS[value - 1] ?? `${value}th`
+}
+
+function removalPhrase(removed: number): string {
+  if (removed <= 0) return ''
+  return ` ${REMOVAL_WORDS[removed - 1] ?? `${removed} times`} removed`
+}
+
+/** "Great-great-" for a fourth-generation forebear; "" for a grandparent. Only the leading word is capitalised. */
+function greatPrefix(count: number): string {
+  if (count <= 0) return ''
+  return `Great-${'great-'.repeat(count - 1)}`
+}
+
+/**
+ * Composes the wording for the kinds that carry distances, so a further
+ * generation never needs a new label added anywhere.
+ */
+function formatLineageLabel(
+  kind: RelationshipKind,
+  subject: Person | undefined,
+  lineage: LineageDistance,
+): string | null {
+  const gendered = GENDERED_LABEL[kind]
+  const gendered_term =
+    gendered && subject?.gender === 'female'
+      ? gendered.female
+      : gendered && subject?.gender === 'male'
+        ? gendered.male
+        : null
+
+  if (kind === 'ancestor' || kind === 'descendant') {
+    // generations 2 is the plain grand- term, each one beyond adds a "Great-".
+    const greats = Math.max((lineage.generations ?? 2) - 2, 0)
+    const base = gendered_term ?? NEUTRAL_LABEL[kind]
+    return greats === 0 ? base : `${greatPrefix(greats)}${base.toLowerCase()}`
+  }
+
+  if (kind === 'auntUncle' || kind === 'nibling') {
+    const greats = lineage.greats ?? 0
+    const base = gendered_term ?? NEUTRAL_LABEL[kind]
+    return greats === 0 ? base : `${greatPrefix(greats)}${base.toLowerCase()}`
+  }
+
+  if (kind === 'cousin') {
+    const degree = lineage.cousinDegree ?? 1
+    // English has no gendered cousin terms, so this stays neutral always.
+    return `${ordinal(degree)} cousin${removalPhrase(lineage.removed ?? 0)}`
+  }
+
+  return null
 }
 
 /**
  * `subject` is the person the label describes — for "Ava is Habeeb's
  * aunt", that is Ava.
  */
-export function formatRelationshipLabel(kind: RelationshipKind, subject: Person | undefined): string {
+export function formatRelationshipLabel(
+  kind: RelationshipKind,
+  subject: Person | undefined,
+  lineage?: LineageDistance,
+): string {
+  if (lineage) {
+    const composed = formatLineageLabel(kind, subject, lineage)
+    if (composed) return composed
+  }
+
   const gendered = GENDERED_LABEL[kind]
   if (gendered && subject) {
     if (subject.gender === 'female') return gendered.female
@@ -100,8 +162,9 @@ export function formatReciprocalSentence(
   reciprocalKind: RelationshipKind,
   personB: Person | undefined,
   personA: Person | undefined,
+  lineage?: LineageDistance,
 ): string {
-  const label = formatRelationshipLabel(reciprocalKind, personB).toLowerCase()
+  const label = formatRelationshipLabel(reciprocalKind, personB, lineage).toLowerCase()
   const bName = personB?.firstName ?? 'They'
   const aName = personA?.firstName ?? 'them'
   return `${bName} is ${aName}'s ${label}`

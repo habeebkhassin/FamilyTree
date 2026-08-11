@@ -1,5 +1,6 @@
 import type { ParentLink, Person, Union } from '../../types'
 import type {
+  LineageDistance,
   RelationshipGraph,
   RelationshipKind,
   RelationshipPeriod,
@@ -76,21 +77,14 @@ export function resolveRelationships(
     })
   }
 
-  // --- Siblings --------------------------------------------------------
-  push(siblingRelationship(personA, personB, index))
+  // --- Everything measured through a shared forebear -------------------
+  // Siblings, grandparents, aunts, cousins and their removals all come
+  // out of one calculation rather than a rule apiece.
+  for (const relationship of lineageRelationships(personA, personB, index)) push(relationship)
 
-  // --- Grandparents / great-grandparents, both directions -------------
-  push(ancestorRelationship(personA, personB, index, 2))
-  push(ancestorRelationship(personB, personA, index, 2, true))
-  push(ancestorRelationship(personA, personB, index, 3))
-  push(ancestorRelationship(personB, personA, index, 3, true))
-
-  // --- Aunt/uncle and their reciprocals -------------------------------
-  for (const relationship of auntUncleRelationships(personA, personB, index, false)) push(relationship)
-  for (const relationship of auntUncleRelationships(personB, personA, index, true)) push(relationship)
-
-  // --- Cousins ---------------------------------------------------------
-  push(cousinRelationship(personA, personB, index))
+  // --- Aunt/uncle by marriage -----------------------------------------
+  for (const relationship of auntUncleByMarriageRelationships(personA, personB, index, false)) push(relationship)
+  for (const relationship of auntUncleByMarriageRelationships(personB, personA, index, true)) push(relationship)
 
   // --- Step-parent / step-child, both directions ----------------------
   for (const relationship of stepParentRelationships(personA, personB, index, false)) push(relationship)
@@ -149,23 +143,56 @@ function parentIdsOf(personId: string, index: GraphIndex): string[] {
   return (index.parentLinksByChild.get(personId) ?? []).map((link) => link.parentId)
 }
 
-/** Ancestors exactly `depth` generations up, each with the path taken to reach them. */
-function ancestorsAtDepth(personId: string, depth: number, index: GraphIndex): { id: string; path: string[] }[] {
-  let frontier: { id: string; path: string[] }[] = [{ id: personId, path: [personId] }]
-  for (let step = 0; step < depth; step += 1) {
-    const next: { id: string; path: string[] }[] = []
+/**
+ * Which ParentLink subtypes carry lineage.
+ *
+ * Biological and adoptive links make someone part of the family line — an
+ * adopted child's grandparents really are their grandparents — so both are
+ * followed. Step and foster links are not: they are the transitional
+ * relationships the dedicated step detectors already describe, and walking
+ * through them would quietly turn a step-parent's mother into a plain
+ * "grandmother", which is exactly the kind of confident-but-wrong label
+ * this engine is supposed to avoid.
+ */
+const LINEAGE_SUBTYPES: ReadonlySet<ParentLink['relationship']> = new Set(['biological', 'adopted'])
+
+function lineageParentIdsOf(personId: string, index: GraphIndex): string[] {
+  return (index.parentLinksByChild.get(personId) ?? [])
+    .filter((link) => LINEAGE_SUBTYPES.has(link.relationship))
+    .map((link) => link.parentId)
+}
+
+interface AncestorHit {
+  /** Generations up from the starting person; 0 is the person themselves. */
+  distance: number
+  /** Ids from the starting person up to this forebear, inclusive at both ends. */
+  path: string[]
+}
+
+/**
+ * Every forebear reachable by walking up lineage links, with the shortest
+ * distance to each. Breadth-first, so the first time a forebear is seen is
+ * by the shortest route; a visited set means malformed or cyclic data
+ * terminates instead of recursing forever.
+ */
+function ancestorMap(personId: string, index: GraphIndex): Map<string, AncestorHit> {
+  const found = new Map<string, AncestorHit>([[personId, { distance: 0, path: [personId] }]])
+  let frontier: AncestorHit[] = [{ distance: 0, path: [personId] }]
+
+  while (frontier.length > 0) {
+    const next: AncestorHit[] = []
     for (const entry of frontier) {
-      for (const parentId of parentIdsOf(entry.id, index)) {
-        // A cycle is impossible in stored data (storage rejects them), but
-        // guarding keeps a hand-built graph from looping forever.
-        if (entry.path.includes(parentId)) continue
-        next.push({ id: parentId, path: [...entry.path, parentId] })
+      const currentId = entry.path[entry.path.length - 1] as string
+      for (const parentId of lineageParentIdsOf(currentId, index)) {
+        if (found.has(parentId)) continue
+        const hit = { distance: entry.distance + 1, path: [...entry.path, parentId] }
+        found.set(parentId, hit)
+        next.push(hit)
       }
     }
     frontier = next
-    if (frontier.length === 0) break
   }
-  return frontier
+  return found
 }
 
 // ---------------------------------------------------------------------
@@ -252,94 +279,183 @@ function directParentRelationship(
   }
 }
 
-function siblingRelationship(personA: Person, personB: Person, index: GraphIndex): ResolvedRelationship | null {
-  const parentsA = new Set(parentIdsOf(personA.id, index))
-  const parentsB = new Set(parentIdsOf(personB.id, index))
-  const shared = [...parentsA].filter((parentId) => parentsB.has(parentId)).sort()
-  if (shared.length === 0) return null
+/**
+ * Everything that can be measured through a shared forebear, from one
+ * calculation instead of a rule per relationship.
+ *
+ * For each shared forebear, count the generations up to it from each
+ * person — dA and dB. Those two numbers alone name the relationship:
+ *
+ *   dA=0            A is the forebear      -> ancestor of B
+ *   dB=0            B is the forebear      -> descendant of B
+ *   dA=1, dB=1      shared parent          -> sibling (full or half)
+ *   dA=1, dB=2      sibling of B's parent  -> aunt/uncle
+ *   dA=1, dB=3      sibling of a grandparent -> great-aunt/uncle
+ *   dA=2, dB=2      -> first cousins
+ *   dA=3, dB=3      -> second cousins
+ *   dA=2, dB=3      -> first cousins once removed
+ *   dA=3, dB=5      -> second cousins twice removed
+ *
+ * so the general rule for two collateral branches is: the cousin degree
+ * is min(dA,dB)-1 and the removal is |dA-dB|, with min(dA,dB)=1 being the
+ * sibling/aunt/nibling family instead. Nothing needs adding to reach a
+ * fourth cousin four times removed.
+ *
+ * Only the MOST RECENT shared forebears are used. Siblings share their
+ * parents AND their grandparents, and without this they would be reported
+ * as first cousins as well; discarding any forebear that is itself an
+ * ancestor of another shared forebear removes those echoes. What it keeps
+ * is genuinely separate connections — being first cousins on one side and
+ * second cousins on the other survives, because neither shared forebear
+ * sits above the other.
+ */
+function lineageRelationships(personA: Person, personB: Person, index: GraphIndex): ResolvedRelationship[] {
+  const ancestorsA = ancestorMap(personA.id, index)
+  const ancestorsB = ancestorMap(personB.id, index)
 
-  // Two shared parents is a full sibling; exactly one, a half sibling —
-  // matching how deriveRelationships already classifies them elsewhere.
-  const kind: RelationshipKind = shared.length >= 2 ? 'sibling' : 'halfSibling'
-  return {
-    id: `sibling:${shared.join(',')}`,
-    kind,
-    reciprocalKind: kind,
-    period: coexistencePeriod(personA, personB),
-    path: [personA.id, shared[0] as string, personB.id],
-    via: 'derived',
+  const shared = [...ancestorsA.keys()].filter((id) => ancestorsB.has(id))
+  if (shared.length === 0) return []
+
+  // Drop any shared forebear that an ancestor of another shared forebear.
+  const sharedSet = new Set(shared)
+  const mostRecent = shared.filter((candidateId) => {
+    for (const otherId of shared) {
+      if (otherId === candidateId) continue
+      const otherAncestors = ancestorMap(otherId, index)
+      if (otherAncestors.has(candidateId)) return false
+    }
+    return true
+  })
+  // Guard against a malformed cycle leaving nothing behind.
+  const forebears = mostRecent.length > 0 ? mostRecent : [...sharedSet]
+
+  // Group by the pair of distances: two grandparents who are a couple
+  // describe ONE first-cousin relationship, not two.
+  const byDistance = new Map<string, { dA: number; dB: number; ids: string[] }>()
+  for (const forebearId of forebears) {
+    const hitA = ancestorsA.get(forebearId) as AncestorHit
+    const hitB = ancestorsB.get(forebearId) as AncestorHit
+    const key = `${hitA.distance}:${hitB.distance}`
+    const group = byDistance.get(key) ?? { dA: hitA.distance, dB: hitB.distance, ids: [] }
+    group.ids.push(forebearId)
+    byDistance.set(key, group)
   }
+
+  const results: ResolvedRelationship[] = []
+  for (const group of [...byDistance.values()].sort((a, b) => a.dA + a.dB - (b.dA + b.dB))) {
+    const classified = classifyLineage(group.dA, group.dB, group.ids.length)
+    if (!classified) continue
+
+    // One route per shared forebear. Grouping them into a single result
+    // is what stops a married couple producing two identical cards, but
+    // the routes themselves are real and are kept rather than discarded —
+    // four of them is how double first cousins differ from ordinary ones.
+    const forebearIds = [...group.ids].sort()
+    const paths = forebearIds.map((id) => {
+      const hitA = ancestorsA.get(id) as AncestorHit
+      const hitB = ancestorsB.get(id) as AncestorHit
+      // A -> ... -> shared forebear -> ... -> B, without repeating the forebear.
+      return [...hitA.path, ...[...hitB.path].reverse().slice(1)]
+    })
+
+    results.push({
+      id: `lineage:${classified.kind}:${forebearIds.join(',')}`,
+      kind: classified.kind,
+      reciprocalKind: classified.reciprocalKind,
+      lineage: classified.lineage,
+      period: coexistencePeriod(personA, personB),
+      path: paths[0] as string[],
+      via: 'derived',
+      commonAncestorIds: forebearIds,
+      paths,
+    })
+  }
+  return results
 }
 
-/** A is `depth` generations above B (2 = grandparent, 3 = great-grandparent). */
-function ancestorRelationship(
-  ancestor: Person,
-  descendant: Person,
-  index: GraphIndex,
-  depth: 2 | 3,
-  reversed = false,
-): ResolvedRelationship | null {
-  const match = ancestorsAtDepth(descendant.id, depth, index).find((entry) => entry.id === ancestor.id)
-  if (!match) return null
+interface ClassifiedLineage {
+  kind: RelationshipKind
+  reciprocalKind: RelationshipKind
+  lineage: LineageDistance
+}
 
-  const ancestorKind: RelationshipKind = depth === 2 ? 'grandparent' : 'greatGrandparent'
-  const descendantKind: RelationshipKind = depth === 2 ? 'grandchild' : 'greatGrandchild'
-  // match.path runs descendant -> ... -> ancestor.
-  const pathFromAncestor = [...match.path].reverse()
+/**
+ * `sharedForebearCount` only matters for siblings: sharing both parents
+ * is a full sibling, sharing one is a half sibling.
+ */
+function classifyLineage(dA: number, dB: number, sharedForebearCount: number): ClassifiedLineage | null {
+  // A direct parent or child is described by its ParentLink, which knows
+  // whether it is biological, adoptive, step or foster — so lineage stays
+  // out of it rather than reporting a second, subtype-blind "parent".
+  if (dA === 0 && dB === 1) return null
+  if (dB === 0 && dA === 1) return null
+
+  if (dA === 0) {
+    return {
+      kind: 'ancestor',
+      reciprocalKind: 'descendant',
+      lineage: { generations: dB },
+    }
+  }
+  if (dB === 0) {
+    return {
+      kind: 'descendant',
+      reciprocalKind: 'ancestor',
+      lineage: { generations: dA },
+    }
+  }
+
+  const nearer = Math.min(dA, dB)
+  const removal = Math.abs(dA - dB)
+
+  if (nearer === 1) {
+    if (removal === 0) {
+      const kind: RelationshipKind = sharedForebearCount >= 2 ? 'sibling' : 'halfSibling'
+      return { kind, reciprocalKind: kind, lineage: {} }
+    }
+    // The closer person is the sibling of the other's ancestor.
+    const greats = removal - 1
+    return dA < dB
+      ? { kind: 'auntUncle', reciprocalKind: 'nibling', lineage: { greats } }
+      : { kind: 'nibling', reciprocalKind: 'auntUncle', lineage: { greats } }
+  }
 
   return {
-    id: `ancestor:${depth}:${ancestor.id}:${descendant.id}`,
-    kind: reversed ? descendantKind : ancestorKind,
-    reciprocalKind: reversed ? ancestorKind : descendantKind,
-    period: coexistencePeriod(ancestor, descendant),
-    path: reversed ? match.path : pathFromAncestor,
-    via: 'derived',
+    kind: 'cousin',
+    reciprocalKind: 'cousin',
+    lineage: { cousinDegree: nearer - 1, removed: removal },
   }
 }
 
 /**
- * A is the sibling of one of B's parents — or the partner of such a
- * person, which is an aunt/uncle by marriage and kept distinct so the UI
- * can word it honestly.
+ * A is partnered with a sibling of one of B's parents. Kept separate from
+ * the lineage calculation because it is not a shared-forebear
+ * relationship at all, and kept deliberately narrow: extending it to
+ * every possible in-law would mean labelling connections the records
+ * cannot reliably support.
  */
-function auntUncleRelationships(
+function auntUncleByMarriageRelationships(
   candidate: Person,
   nibling: Person,
   index: GraphIndex,
   reversed: boolean,
 ): ResolvedRelationship[] {
   const results: ResolvedRelationship[] = []
-  const candidateParents = new Set(parentIdsOf(candidate.id, index))
+  const candidateAncestors = ancestorMap(candidate.id, index)
 
-  for (const parentId of parentIdsOf(nibling.id, index)) {
+  for (const parentId of lineageParentIdsOf(nibling.id, index)) {
     if (parentId === candidate.id) continue
-    const parent = index.peopleById.get(parentId)
-    if (!parent) continue
+    // Only when the candidate is not already related by blood, so a
+    // relative who also married in is not reported twice.
+    if (candidateAncestors.has(parentId)) continue
 
-    // Blood: candidate and the nibling's parent share a parent.
-    const sharesParent = parentIdsOf(parentId, index).some((grandparentId) =>
-      candidateParents.has(grandparentId),
-    )
-    if (sharesParent) {
-      results.push({
-        id: `auntUncle:${candidate.id}:${parentId}:${nibling.id}`,
-        kind: reversed ? 'niblingByBlood' : 'auntUncle',
-        reciprocalKind: reversed ? 'auntUncle' : 'niblingByBlood',
-        period: coexistencePeriod(candidate, nibling),
-        path: reversed ? [nibling.id, parentId, candidate.id] : [candidate.id, parentId, nibling.id],
-        via: 'derived',
-      })
-      continue
-    }
-
-    // By marriage: candidate is partnered with a sibling of the parent.
     for (const union of index.unionsByPerson.get(candidate.id) ?? []) {
       const spouseId = otherPartner(union, candidate.id)
       if (spouseId === parentId) continue
-      const spouseSharesParent = parentIdsOf(spouseId, index).some((grandparentId) =>
-        parentIdsOf(parentId, index).includes(grandparentId),
-      )
-      if (!spouseSharesParent) continue
+
+      const spouseParents = lineageParentIdsOf(spouseId, index)
+      const parentParents = lineageParentIdsOf(parentId, index)
+      if (!spouseParents.some((id) => parentParents.includes(id))) continue
 
       results.push({
         id: `auntUncleByMarriage:${union.id}:${nibling.id}`,
@@ -360,28 +476,6 @@ function auntUncleRelationships(
   }
 
   return results
-}
-
-/** First cousins: their parents are siblings. */
-function cousinRelationship(personA: Person, personB: Person, index: GraphIndex): ResolvedRelationship | null {
-  for (const parentAId of parentIdsOf(personA.id, index)) {
-    const grandparentsA = new Set(parentIdsOf(parentAId, index))
-    for (const parentBId of parentIdsOf(personB.id, index)) {
-      if (parentAId === parentBId) continue
-      const sharesGrandparent = parentIdsOf(parentBId, index).some((id) => grandparentsA.has(id))
-      if (!sharesGrandparent) continue
-
-      return {
-        id: `cousin:${[parentAId, parentBId].sort().join(',')}`,
-        kind: 'cousin',
-        reciprocalKind: 'cousin',
-        period: coexistencePeriod(personA, personB),
-        path: [personA.id, parentAId, parentBId, personB.id],
-        via: 'derived',
-      }
-    }
-  }
-  return null
 }
 
 /**
@@ -479,7 +573,18 @@ function dedupe(relationships: ResolvedRelationship[]): ResolvedRelationship[] {
   const seen = new Set<string>()
   const result: ResolvedRelationship[] = []
   for (const relationship of relationships) {
-    const key = `${relationship.kind}|${relationship.path.join('>')}`
+    // The distances are part of the identity: a first cousin and a second
+    // cousin are different relationships even when the route between them
+    // happens to be written the same way.
+    const { generations, greats, cousinDegree, removed } = relationship.lineage ?? {}
+    const key = [
+      relationship.kind,
+      generations ?? '',
+      greats ?? '',
+      cousinDegree ?? '',
+      removed ?? '',
+      relationship.path.join('>'),
+    ].join('|')
     if (seen.has(key)) continue
     seen.add(key)
     result.push(relationship)

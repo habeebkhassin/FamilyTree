@@ -141,10 +141,10 @@ test('5. grandparent and great-grandparent are found at the right depth', () => 
     [makeParentLink(great, grand), makeParentLink(grand, parent), makeParentLink(parent, child)],
   )
 
-  assert.ok(kinds(resolveRelationships(grand.id, child.id, graph)).includes('grandparent'))
-  assert.ok(kinds(resolveRelationships(child.id, grand.id, graph)).includes('grandchild'))
-  assert.ok(kinds(resolveRelationships(great.id, child.id, graph)).includes('greatGrandparent'))
-  assert.ok(kinds(resolveRelationships(child.id, great.id, graph)).includes('greatGrandchild'))
+  assert.ok(kinds(resolveRelationships(grand.id, child.id, graph)).includes('ancestor'))
+  assert.ok(kinds(resolveRelationships(child.id, grand.id, graph)).includes('descendant'))
+  assert.ok(kinds(resolveRelationships(great.id, child.id, graph)).includes('ancestor'))
+  assert.ok(kinds(resolveRelationships(child.id, great.id, graph)).includes('descendant'))
 })
 
 test('6/7. aunt and nephew are reciprocal, and dated from the younger birth', () => {
@@ -159,13 +159,13 @@ test('6/7. aunt and nephew are reciprocal, and dated from the younger birth', ()
 
   const forward = resolveRelationships(aunt.id, nibling.id, graph)
   const auntRel = find(forward, 'auntUncle')
-  assert.equal(auntRel.reciprocalKind, 'niblingByBlood')
+  assert.equal(auntRel.reciprocalKind, 'nibling')
   assert.equal(formatRelationshipLabel(auntRel.kind, aunt), 'Aunt')
   assert.equal(formatRelationshipLabel(auntRel.reciprocalKind, nibling), 'Nephew')
   assert.equal(auntRel.period.start, '1999-06-01')
   assert.equal(formatRelationshipPeriod(auntRel.period), '1999 – Present')
 
-  assert.ok(kinds(resolveRelationships(nibling.id, aunt.id, graph)).includes('niblingByBlood'))
+  assert.ok(kinds(resolveRelationships(nibling.id, aunt.id, graph)).includes('nibling'))
 })
 
 test('8. first cousins are found through sibling parents', () => {
@@ -285,7 +285,7 @@ test('13/19. the Ava/Habeeb case returns BOTH aunt and stepmother, each with its
 
   // And the reciprocal view holds both, too.
   const reciprocal = kinds(resolveRelationships(habeeb.id, ava.id, graph))
-  assert.ok(reciprocal.includes('niblingByBlood'))
+  assert.ok(reciprocal.includes('nibling'))
   assert.ok(reciprocal.includes('stepChild'))
 })
 
@@ -335,9 +335,11 @@ test('17. the path explains the connection, starting at A and ending at B', () =
   const auntRel = find(resolveRelationships(aunt.id, nibling.id, graph), 'auntUncle')
   assert.equal(auntRel.path[0], aunt.id, 'path starts at A')
   assert.equal(auntRel.path[auntRel.path.length - 1], nibling.id, 'path ends at B')
-  assert.deepEqual(auntRel.path, [aunt.id, parent.id, nibling.id])
+  // Routes through the shared forebear, which is what actually explains
+  // the connection: aunt -> their shared grandparent -> parent -> nibling.
+  assert.deepEqual(auntRel.path, [aunt.id, grand.id, parent.id, nibling.id])
 
-  const grandRel = find(resolveRelationships(grand.id, nibling.id, graph), 'grandparent')
+  const grandRel = find(resolveRelationships(grand.id, nibling.id, graph), 'ancestor')
   assert.deepEqual(grandRel.path, [grand.id, parent.id, nibling.id])
 })
 
@@ -421,4 +423,603 @@ test('20b. results are deterministic and free of duplicates', () => {
 
   const ids = first.map((relationship) => relationship.id)
   assert.equal(new Set(ids).size, ids.length, 'no duplicate relationship ids')
+})
+
+// ── Phase 4E-6: the generalized lineage engine ───────────────────────
+// These exercise the distance formula rather than a rule per label, so
+// depths beyond the ones written here should follow for free.
+
+/** A straight line of descent: index 0 is the eldest. */
+function lineOfDescent(depth: number): { people: Person[]; graph: RelationshipGraph } {
+  const people = Array.from({ length: depth }, (_unused, index) => makePerson(`Gen${index + 1}`))
+  const links = people.slice(1).map((person, index) => makeParentLink(people[index] as Person, person))
+  return { people, graph: graphOf(people, links) }
+}
+
+/**
+ * Two branches descending from one couple. `depthA`/`depthB` count the
+ * generations below the shared forebears, so (2,2) are first cousins.
+ */
+function cousinFixture(depthA: number, depthB: number) {
+  const grandA = makePerson('Shared A')
+  const grandB = makePerson('Shared B')
+  const people = [grandA, grandB]
+  const links: ParentLink[] = []
+
+  function branch(prefix: string, depth: number): Person {
+    let current = makePerson(`${prefix}1`)
+    people.push(current)
+    links.push(makeParentLink(grandA, current), makeParentLink(grandB, current))
+    for (let step = 2; step <= depth; step += 1) {
+      const next = makePerson(`${prefix}${step}`)
+      people.push(next)
+      links.push(makeParentLink(current, next))
+      current = next
+    }
+    return current
+  }
+
+  const endA = branch('A', depthA)
+  const endB = branch('B', depthB)
+  return { endA, endB, graph: graphOf(people, links) }
+}
+
+test('30. ancestors and descendants generalize to any depth', () => {
+  const { people, graph } = lineOfDescent(6)
+  const eldest = people[0] as Person
+  const youngest = people[5] as Person
+
+  const up = find(resolveRelationships(eldest.id, youngest.id, graph), 'ancestor')
+  assert.equal(up.lineage?.generations, 5, 'five generations up')
+  assert.equal(up.reciprocalKind, 'descendant')
+
+  const down = find(resolveRelationships(youngest.id, eldest.id, graph), 'descendant')
+  assert.equal(down.lineage?.generations, 5)
+})
+
+test('31. grand / great-grand / great-great-grand wording is composed, not enumerated', () => {
+  const she = makePerson('She', { gender: 'female' })
+  assert.equal(formatRelationshipLabel('ancestor', she, { generations: 2 }), 'Grandmother')
+  assert.equal(formatRelationshipLabel('ancestor', she, { generations: 3 }), 'Great-grandmother')
+  assert.equal(formatRelationshipLabel('ancestor', she, { generations: 4 }), 'Great-great-grandmother')
+  assert.equal(formatRelationshipLabel('ancestor', she, { generations: 6 }), 'Great-great-great-great-grandmother')
+  assert.equal(formatRelationshipLabel('descendant', she, { generations: 3 }), 'Great-granddaughter')
+  // No gender recorded stays neutral, however deep.
+  const them = makePerson('Them')
+  assert.equal(formatRelationshipLabel('ancestor', them, { generations: 4 }), 'Great-great-grandparent')
+})
+
+test('32. cousin degree and removal come out of the distance formula', () => {
+  const cases: [number, number, number, number][] = [
+    // depthA, depthB, expected degree, expected removal
+    [2, 2, 1, 0], // first cousins
+    [3, 3, 2, 0], // second cousins
+    [4, 4, 3, 0], // third cousins
+    [2, 3, 1, 1], // first cousins once removed
+    [2, 4, 1, 2], // first cousins twice removed
+    [3, 4, 2, 1], // second cousins once removed
+    [3, 5, 2, 2], // second cousins twice removed
+  ]
+
+  for (const [depthA, depthB, degree, removed] of cases) {
+    const { endA, endB, graph } = cousinFixture(depthA, depthB)
+    const cousin = find(resolveRelationships(endA.id, endB.id, graph), 'cousin')
+    assert.equal(cousin.lineage?.cousinDegree, degree, `degree for depths ${depthA}/${depthB}`)
+    assert.equal(cousin.lineage?.removed, removed, `removal for depths ${depthA}/${depthB}`)
+    assert.equal(cousin.reciprocalKind, 'cousin', 'a cousin is a cousin in both directions')
+  }
+})
+
+test('33. cousin wording spells out degree and removal', () => {
+  assert.equal(formatRelationshipLabel('cousin', undefined, { cousinDegree: 1, removed: 0 }), 'First cousin')
+  assert.equal(formatRelationshipLabel('cousin', undefined, { cousinDegree: 2, removed: 0 }), 'Second cousin')
+  assert.equal(formatRelationshipLabel('cousin', undefined, { cousinDegree: 3, removed: 0 }), 'Third cousin')
+  assert.equal(
+    formatRelationshipLabel('cousin', undefined, { cousinDegree: 1, removed: 1 }),
+    'First cousin once removed',
+  )
+  assert.equal(
+    formatRelationshipLabel('cousin', undefined, { cousinDegree: 2, removed: 2 }),
+    'Second cousin twice removed',
+  )
+})
+
+test('34. great-aunts, great-uncles and great-niblings generalize too', () => {
+  // The aunt sits one generation below the shared forebear; the nibling
+  // sits further down, and each extra step adds a "great".
+  const { endA: auntSide, endB: niblingSide, graph } = cousinFixture(1, 3)
+  const aunt = find(resolveRelationships(auntSide.id, niblingSide.id, graph), 'auntUncle')
+  assert.equal(aunt.lineage?.greats, 1, 'two generations apart is a GREAT-aunt/uncle')
+  assert.equal(aunt.reciprocalKind, 'nibling')
+
+  const deeper = cousinFixture(1, 4)
+  const greatGreat = find(resolveRelationships(deeper.endA.id, deeper.endB.id, deeper.graph), 'auntUncle')
+  assert.equal(greatGreat.lineage?.greats, 2)
+
+  const she = makePerson('She', { gender: 'female' })
+  const he = makePerson('He', { gender: 'male' })
+  assert.equal(formatRelationshipLabel('auntUncle', she, { greats: 0 }), 'Aunt')
+  assert.equal(formatRelationshipLabel('auntUncle', he, { greats: 1 }), 'Great-uncle')
+  assert.equal(formatRelationshipLabel('nibling', she, { greats: 1 }), 'Great-niece')
+  assert.equal(formatRelationshipLabel('nibling', he, { greats: 2 }), 'Great-great-nephew')
+})
+
+test('35. the nibling direction is the mirror of the aunt direction', () => {
+  const { endA: auntSide, endB: niblingSide, graph } = cousinFixture(1, 2)
+  const fromNibling = find(resolveRelationships(niblingSide.id, auntSide.id, graph), 'nibling')
+  assert.equal(fromNibling.lineage?.greats, 0)
+  assert.equal(fromNibling.reciprocalKind, 'auntUncle')
+})
+
+test('36. siblings are never also reported as cousins through their grandparents', () => {
+  const grand = makePerson('Grand')
+  const mum = makePerson('Mum')
+  const dad = makePerson('Dad')
+  const one = makePerson('One')
+  const two = makePerson('Two')
+  const graph = graphOf(
+    [grand, mum, dad, one, two],
+    [
+      makeParentLink(grand, mum),
+      makeParentLink(mum, one),
+      makeParentLink(dad, one),
+      makeParentLink(mum, two),
+      makeParentLink(dad, two),
+    ],
+  )
+
+  const results = resolveRelationships(one.id, two.id, graph)
+  assert.ok(kinds(results).includes('sibling'))
+  assert.ok(!kinds(results).includes('cousin'), 'the shared grandparent is an echo of the shared parents')
+})
+
+test('37. a grandchild is not also reported as a nibling of their own grandparent', () => {
+  const { people, graph } = lineOfDescent(3)
+  const grand = people[0] as Person
+  const child = people[2] as Person
+
+  const results = resolveRelationships(grand.id, child.id, graph)
+  assert.deepEqual(kinds(results), ['ancestor'], 'only the direct line, no collateral echo')
+})
+
+test('38. two separate connections are both kept, at their own degrees', () => {
+  // Shared maternal grandparent -> first cousins.
+  // Shared paternal great-grandparent -> second cousins.
+  const maternalGrand = makePerson('Maternal Grand')
+  const paternalGreat = makePerson('Paternal Great')
+  const paternalGrandA = makePerson('Paternal Grand A')
+  const paternalGrandB = makePerson('Paternal Grand B')
+  const motherA = makePerson('Mother A')
+  const motherB = makePerson('Mother B')
+  const fatherA = makePerson('Father A')
+  const fatherB = makePerson('Father B')
+  const childA = makePerson('Child A')
+  const childB = makePerson('Child B')
+
+  const graph = graphOf(
+    [maternalGrand, paternalGreat, paternalGrandA, paternalGrandB, motherA, motherB, fatherA, fatherB, childA, childB],
+    [
+      makeParentLink(maternalGrand, motherA),
+      makeParentLink(maternalGrand, motherB),
+      makeParentLink(paternalGreat, paternalGrandA),
+      makeParentLink(paternalGreat, paternalGrandB),
+      makeParentLink(paternalGrandA, fatherA),
+      makeParentLink(paternalGrandB, fatherB),
+      makeParentLink(motherA, childA),
+      makeParentLink(fatherA, childA),
+      makeParentLink(motherB, childB),
+      makeParentLink(fatherB, childB),
+    ],
+  )
+
+  const cousins = resolveRelationships(childA.id, childB.id, graph).filter((r) => r.kind === 'cousin')
+  const degrees = cousins.map((r) => r.lineage?.cousinDegree).sort()
+  assert.deepEqual(degrees, [1, 2], 'first cousins one way, second cousins the other')
+  for (const cousin of cousins) {
+    assert.ok((cousin.commonAncestorIds ?? []).length > 0, 'each says which forebear it was measured through')
+  }
+})
+
+test('39. two grandparents who are a couple describe ONE first-cousin relationship', () => {
+  const { endA, endB, graph } = cousinFixture(2, 2)
+  const cousins = resolveRelationships(endA.id, endB.id, graph).filter((r) => r.kind === 'cousin')
+  assert.equal(cousins.length, 1, 'not one relationship per shared grandparent')
+  assert.equal(cousins[0]?.commonAncestorIds?.length, 2, 'but both forebears are recorded')
+})
+
+test('40. step links do not create blood lineage', () => {
+  const stepGrand = makePerson('Step Grand')
+  const stepParent = makePerson('Step Parent')
+  const child = makePerson('Child')
+  const graph = graphOf(
+    [stepGrand, stepParent, child],
+    [makeParentLink(stepGrand, stepParent), makeParentLink(stepParent, child, 'step')],
+  )
+
+  const results = resolveRelationships(stepGrand.id, child.id, graph)
+  assert.deepEqual(results, [], 'a step-parent"s parent is not silently a grandparent')
+
+  // The step link itself is still reported directly.
+  assert.ok(kinds(resolveRelationships(stepParent.id, child.id, graph)).includes('stepParent'))
+})
+
+test('41. adoptive links DO carry lineage, so an adopted child has grandparents', () => {
+  const grand = makePerson('Grand')
+  const adopter = makePerson('Adopter')
+  const adoptee = makePerson('Adoptee')
+  const graph = graphOf(
+    [grand, adopter, adoptee],
+    [makeParentLink(grand, adopter), makeParentLink(adopter, adoptee, 'adopted')],
+  )
+
+  const results = resolveRelationships(grand.id, adoptee.id, graph)
+  assert.equal(find(results, 'ancestor').lineage?.generations, 2)
+})
+
+test('42. a malformed cyclic graph terminates instead of recursing forever', () => {
+  const a = makePerson('A')
+  const b = makePerson('B')
+  const c = makePerson('C')
+  // A parents B, B parents C, and C parents A — impossible in stored data
+  // (storage rejects cycles) but the engine must not hang on it.
+  const graph = graphOf([a, b, c], [makeParentLink(a, b), makeParentLink(b, c), makeParentLink(c, a)])
+
+  const results = resolveRelationships(a.id, c.id, graph)
+  assert.ok(Array.isArray(results), 'returns rather than hanging')
+})
+
+test('43. a dangling parent link simply yields fewer relationships', () => {
+  const known = makePerson('Known')
+  const child = makePerson('Child')
+  // A ParentLink pointing at somebody absent from the snapshot.
+  const danglingLink: ParentLink = {
+    id: nextId('link'),
+    familyTreeId: TREE_ID,
+    parentId: 'not-in-this-graph',
+    childId: child.id,
+    relationship: 'biological',
+    createdAt: ISO,
+    updatedAt: ISO,
+  }
+  const graph = graphOf([known, child], [danglingLink])
+
+  assert.deepEqual(resolveRelationships(known.id, child.id, graph), [], 'no relationship is invented')
+})
+
+test('44. the same records always give the same answer, whatever the canvas is doing', () => {
+  // Collapsing a family group is a drawing decision and has no route into
+  // this call: the resolver only ever sees people, links and unions.
+  const { endA, endB, graph } = cousinFixture(2, 2)
+  const first = resolveRelationships(endA.id, endB.id, graph)
+  const second = resolveRelationships(endA.id, endB.id, { ...graph })
+  assert.deepEqual(first, second)
+})
+
+test('45. a wide, deep tree resolves quickly', () => {
+  const people: Person[] = []
+  const links: ParentLink[] = []
+  const root = makePerson('Root')
+  people.push(root)
+  let frontier = [root]
+  while (people.length < 500) {
+    const next: Person[] = []
+    for (const parent of frontier) {
+      for (let index = 0; index < 4 && people.length < 500; index += 1) {
+        const child = makePerson(`P${people.length}`)
+        people.push(child)
+        links.push(makeParentLink(parent, child))
+        next.push(child)
+      }
+    }
+    if (next.length === 0) break
+    frontier = next
+  }
+  const graph = graphOf(people, links)
+
+  const started = performance.now()
+  const results = resolveRelationships(
+    people[people.length - 1]?.id as string,
+    people[people.length - 2]?.id as string,
+    graph,
+  )
+  const elapsed = performance.now() - started
+
+  assert.ok(results.length > 0, 'the deepest two are related')
+  assert.ok(elapsed < 250, `resolution should stay well under 250ms, took ${elapsed.toFixed(1)}ms`)
+})
+
+// ── Phase 4E-6a: multiple common ancestors and route metadata ────────
+// A pair can reach each other through several forebears at once. The
+// rule being pinned down here is that the NUMBER OF CARDS follows the
+// relationship's name, while the NUMBER OF ROUTES follows the facts —
+// so a married couple never doubles the card, and a genuinely doubled
+// connection never quietly loses half its evidence.
+
+/** Two siblings marrying two siblings: their children are double first cousins. */
+function doubleFirstCousinFixture() {
+  // Couple 1's children: brotherA, brotherB. Couple 2's children: sisterA, sisterB.
+  const grandpa1 = makePerson('Grandpa One')
+  const grandma1 = makePerson('Grandma One')
+  const grandpa2 = makePerson('Grandpa Two')
+  const grandma2 = makePerson('Grandma Two')
+  const brotherA = makePerson('Brother A')
+  const brotherB = makePerson('Brother B')
+  const sisterA = makePerson('Sister A')
+  const sisterB = makePerson('Sister B')
+  const childA = makePerson('Child A')
+  const childB = makePerson('Child B')
+
+  const graph = graphOf(
+    [grandpa1, grandma1, grandpa2, grandma2, brotherA, brotherB, sisterA, sisterB, childA, childB],
+    [
+      // Brothers from couple 1.
+      makeParentLink(grandpa1, brotherA),
+      makeParentLink(grandma1, brotherA),
+      makeParentLink(grandpa1, brotherB),
+      makeParentLink(grandma1, brotherB),
+      // Sisters from couple 2.
+      makeParentLink(grandpa2, sisterA),
+      makeParentLink(grandma2, sisterA),
+      makeParentLink(grandpa2, sisterB),
+      makeParentLink(grandma2, sisterB),
+      // Each brother pairs with a sister; each pair has one child.
+      makeParentLink(brotherA, childA),
+      makeParentLink(sisterA, childA),
+      makeParentLink(brotherB, childB),
+      makeParentLink(sisterB, childB),
+    ],
+  )
+  return { childA, childB, graph, forebears: [grandpa1, grandma1, grandpa2, grandma2] }
+}
+
+test('46. a married couple as shared forebears produces ONE card, not one per spouse', () => {
+  const { endA, endB, graph } = cousinFixture(2, 2)
+  const results = resolveRelationships(endA.id, endB.id, graph)
+  const cousins = results.filter((relationship) => relationship.kind === 'cousin')
+
+  assert.equal(cousins.length, 1, 'two grandparents who are a couple are still one first-cousin relationship')
+  assert.equal(cousins[0]?.commonAncestorIds?.length, 2, 'but both of them are recorded as the reason')
+  assert.equal(cousins[0]?.paths?.length, 2, 'and both routes are kept')
+  assert.equal(new Set(results.map((relationship) => relationship.id)).size, results.length, 'no duplicate ids')
+})
+
+test('47. double first cousins stay ONE card while keeping all four routes', () => {
+  const { childA, childB, graph, forebears } = doubleFirstCousinFixture()
+  const results = resolveRelationships(childA.id, childB.id, graph)
+  const cousins = results.filter((relationship) => relationship.kind === 'cousin')
+
+  assert.equal(cousins.length, 1, 'related twice over, but "first cousin" is said once')
+  const cousin = cousins[0] as ResolvedRelationship
+  assert.equal(cousin.lineage?.cousinDegree, 1)
+  assert.equal(cousin.lineage?.removed, 0)
+
+  // All four grandparents are genuinely shared forebears at the same distance.
+  assert.deepEqual(
+    cousin.commonAncestorIds,
+    forebears.map((person) => person.id).sort(),
+    'every shared forebear is recorded',
+  )
+  assert.equal(cousin.paths?.length, 4, 'one route per forebear survives')
+
+  // The routes are actually different, not four copies of one.
+  const routeSignatures = new Set((cousin.paths ?? []).map((path) => path.join('>')))
+  assert.equal(routeSignatures.size, 4, 'the four routes are distinct')
+
+  // And each route really does run A -> forebear -> B.
+  for (const path of cousin.paths ?? []) {
+    assert.equal(path[0], childA.id, 'every route starts at A')
+    assert.equal(path[path.length - 1], childB.id, 'every route ends at B')
+    assert.ok(
+      forebears.some((person) => path.includes(person.id)),
+      'every route passes through one of the shared forebears',
+    )
+  }
+})
+
+test('48. `path` is always the first of `paths`, so the UI shows a real route', () => {
+  const { childA, childB, graph } = doubleFirstCousinFixture()
+  const cousin = find(resolveRelationships(childA.id, childB.id, graph), 'cousin')
+
+  assert.deepEqual(cousin.path, cousin.paths?.[0], 'the displayed route is one of the recorded routes')
+  assert.ok((cousin.paths ?? []).some((path) => path.join('>') === cousin.path.join('>')))
+})
+
+test('49. independent connections at DIFFERENT degrees stay separate cards', () => {
+  // Shared maternal grandparent -> first cousins.
+  // Shared paternal great-grandparent -> second cousins.
+  const maternalGrand = makePerson('Maternal Grand')
+  const paternalGreat = makePerson('Paternal Great')
+  const paternalGrandA = makePerson('Paternal Grand A')
+  const paternalGrandB = makePerson('Paternal Grand B')
+  const motherA = makePerson('Mother A')
+  const motherB = makePerson('Mother B')
+  const fatherA = makePerson('Father A')
+  const fatherB = makePerson('Father B')
+  const childA = makePerson('Child A')
+  const childB = makePerson('Child B')
+
+  const graph = graphOf(
+    [maternalGrand, paternalGreat, paternalGrandA, paternalGrandB, motherA, motherB, fatherA, fatherB, childA, childB],
+    [
+      makeParentLink(maternalGrand, motherA),
+      makeParentLink(maternalGrand, motherB),
+      makeParentLink(paternalGreat, paternalGrandA),
+      makeParentLink(paternalGreat, paternalGrandB),
+      makeParentLink(paternalGrandA, fatherA),
+      makeParentLink(paternalGrandB, fatherB),
+      makeParentLink(motherA, childA),
+      makeParentLink(fatherA, childA),
+      makeParentLink(motherB, childB),
+      makeParentLink(fatherB, childB),
+    ],
+  )
+
+  const cousins = resolveRelationships(childA.id, childB.id, graph).filter((r) => r.kind === 'cousin')
+  assert.equal(cousins.length, 2, 'different degrees are different relationships and stay apart')
+
+  const byDegree = new Map(cousins.map((relationship) => [relationship.lineage?.cousinDegree, relationship]))
+  assert.deepEqual([...byDegree.keys()].sort(), [1, 2])
+
+  // Each card points at its own forebear, and the two never overlap.
+  const firstCousinAncestors = byDegree.get(1)?.commonAncestorIds ?? []
+  const secondCousinAncestors = byDegree.get(2)?.commonAncestorIds ?? []
+  assert.deepEqual(firstCousinAncestors, [maternalGrand.id])
+  assert.deepEqual(secondCousinAncestors, [paternalGreat.id])
+  assert.equal(
+    firstCousinAncestors.filter((id) => secondCousinAncestors.includes(id)).length,
+    0,
+    'the two connections share no forebear',
+  )
+})
+
+test('50. full siblings record both shared parents; half siblings record the one', () => {
+  const mum = makePerson('Mum')
+  const dad = makePerson('Dad')
+  const otherDad = makePerson('Other Dad')
+  const full1 = makePerson('Full 1')
+  const full2 = makePerson('Full 2')
+  const half = makePerson('Half')
+
+  const graph = graphOf(
+    [mum, dad, otherDad, full1, full2, half],
+    [
+      makeParentLink(mum, full1),
+      makeParentLink(dad, full1),
+      makeParentLink(mum, full2),
+      makeParentLink(dad, full2),
+      makeParentLink(mum, half),
+      makeParentLink(otherDad, half),
+    ],
+  )
+
+  const fullPair = find(resolveRelationships(full1.id, full2.id, graph), 'sibling')
+  assert.deepEqual(fullPair.commonAncestorIds, [mum.id, dad.id].sort(), 'both parents are the reason')
+  assert.equal(fullPair.paths?.length, 2, 'one route through each parent')
+
+  const halfPair = find(resolveRelationships(full1.id, half.id, graph), 'halfSibling')
+  assert.deepEqual(halfPair.commonAncestorIds, [mum.id], 'only the shared parent')
+  assert.equal(halfPair.paths?.length, 1)
+})
+
+test('51. every result across a busy pair has a unique id and a route that starts at A and ends at B', () => {
+  // Aunt by blood AND stepmother, so both a lineage result and a
+  // union-derived one land in the same list.
+  const grand = makePerson('Grand')
+  const father = makePerson('Father', { gender: 'male' })
+  const mother = makePerson('Mother', { gender: 'female' })
+  const ava = makePerson('Ava', { gender: 'female', birth: '1975-01-01' })
+  const habeeb = makePerson('Habeeb', { gender: 'male', birth: '1999-06-01' })
+
+  const graph = graphOf(
+    [grand, father, mother, ava, habeeb],
+    [
+      makeParentLink(grand, father),
+      makeParentLink(grand, ava),
+      makeParentLink(father, habeeb),
+      makeParentLink(mother, habeeb),
+    ],
+    [makeUnion(mother, ava, { start: '2023-03-01' })],
+  )
+
+  const results = resolveRelationships(ava.id, habeeb.id, graph)
+  assert.ok(results.length >= 2, 'both the aunt and the stepmother readings are present')
+  assert.equal(new Set(results.map((r) => r.id)).size, results.length, 'ids are unique')
+
+  for (const relationship of results) {
+    assert.equal(relationship.path[0], ava.id, `${relationship.kind} route starts at A`)
+    assert.equal(relationship.path[relationship.path.length - 1], habeeb.id, `${relationship.kind} route ends at B`)
+    // Any route offered as an alternative must obey the same rule.
+    for (const path of relationship.paths ?? []) {
+      assert.equal(path[0], ava.id)
+      assert.equal(path[path.length - 1], habeeb.id)
+    }
+  }
+})
+
+test('52. foster links are excluded from lineage, exactly like step links', () => {
+  const fosterGrand = makePerson('Foster Grand')
+  const fosterParent = makePerson('Foster Parent')
+  const child = makePerson('Child')
+  const graph = graphOf(
+    [fosterGrand, fosterParent, child],
+    [makeParentLink(fosterGrand, fosterParent), makeParentLink(fosterParent, child, 'foster')],
+  )
+
+  assert.deepEqual(
+    resolveRelationships(fosterGrand.id, child.id, graph),
+    [],
+    'a foster parent"s parent is not silently a grandparent',
+  )
+  // The foster link itself is still reported directly.
+  assert.ok(kinds(resolveRelationships(fosterParent.id, child.id, graph)).includes('fosterParent'))
+})
+
+test('53. adoptive lineage reaches cousins, not just grandparents', () => {
+  // Adoption makes someone part of the line, so their adoptive parent's
+  // sibling's child is a first cousin.
+  const grand = makePerson('Grand')
+  const adopter = makePerson('Adopter')
+  const sibling = makePerson('Sibling')
+  const adoptee = makePerson('Adoptee')
+  const cousin = makePerson('Cousin')
+
+  const graph = graphOf(
+    [grand, adopter, sibling, adoptee, cousin],
+    [
+      makeParentLink(grand, adopter),
+      makeParentLink(grand, sibling),
+      makeParentLink(adopter, adoptee, 'adopted'),
+      makeParentLink(sibling, cousin),
+    ],
+  )
+
+  const result = find(resolveRelationships(adoptee.id, cousin.id, graph), 'cousin')
+  assert.equal(result.lineage?.cousinDegree, 1)
+  assert.deepEqual(result.commonAncestorIds, [grand.id])
+})
+
+test('54. a mixed step/adoptive graph keeps the two apart', () => {
+  // One adoptive parent (lineage) and one step-parent (not lineage) for
+  // the same child: only the adoptive side yields grandparents.
+  const adoptiveGrand = makePerson('Adoptive Grand')
+  const adopter = makePerson('Adopter')
+  const stepGrand = makePerson('Step Grand')
+  const stepParent = makePerson('Step Parent')
+  const child = makePerson('Child')
+
+  const graph = graphOf(
+    [adoptiveGrand, adopter, stepGrand, stepParent, child],
+    [
+      makeParentLink(adoptiveGrand, adopter),
+      makeParentLink(adopter, child, 'adopted'),
+      makeParentLink(stepGrand, stepParent),
+      makeParentLink(stepParent, child, 'step'),
+    ],
+  )
+
+  assert.equal(
+    find(resolveRelationships(adoptiveGrand.id, child.id, graph), 'ancestor').lineage?.generations,
+    2,
+    'the adoptive grandparent is a grandparent',
+  )
+  assert.deepEqual(
+    resolveRelationships(stepGrand.id, child.id, graph),
+    [],
+    'the step-parent"s parent is not',
+  )
+})
+
+test('55. route metadata is deterministic and ordered with commonAncestorIds', () => {
+  const { childA, childB, graph } = doubleFirstCousinFixture()
+  const first = resolveRelationships(childA.id, childB.id, graph)
+  const second = resolveRelationships(childA.id, childB.id, graph)
+  assert.deepEqual(first, second, 'same records, same routes, same order')
+
+  const cousin = find(first, 'cousin')
+  const ancestorIds = cousin.commonAncestorIds ?? []
+  assert.deepEqual([...ancestorIds].sort(), ancestorIds, 'forebears are in a stable sorted order')
+  // paths[i] must be the route through commonAncestorIds[i].
+  ;(cousin.paths ?? []).forEach((path, index) => {
+    assert.ok(path.includes(ancestorIds[index] as string), `route ${index} runs through forebear ${index}`)
+  })
 })

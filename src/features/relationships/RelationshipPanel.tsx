@@ -87,14 +87,19 @@ export function RelationshipPanel({
                     </span>
                     <span className="relationship-panel__body">
                       <span className="relationship-panel__label">
-                        {formatRelationshipLabel(relationship.kind, personA)}
+                        {formatRelationshipLabel(relationship.kind, personA, relationship.lineage)}
                         {isPreferred && <span className="relationship-panel__current">Current</span>}
                       </span>
                       <span className="relationship-panel__period">
                         {formatRelationshipPeriod(relationship.period)}
                       </span>
                       <span className="relationship-panel__reciprocal">
-                        {formatReciprocalSentence(relationship.reciprocalKind, personB, personA)}
+                        {formatReciprocalSentence(
+                          relationship.reciprocalKind,
+                          personB,
+                          personA,
+                          relationship.lineage,
+                        )}
                       </span>
                     </span>
                   </button>
