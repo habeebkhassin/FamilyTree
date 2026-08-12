@@ -33,6 +33,31 @@
   box-shadow: var(--shadow-hover);
 }
 
+/*
+  The current viewpoint. A halo rather than a bigger card: the eye finds
+  it immediately while the node keeps its exact dimensions, so every
+  measurement in layout.ts stays true and nothing about ranking or
+  placement shifts when focus moves.
+*/
+.person-node--focal {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-bg),
+    var(--shadow-hover);
+}
+
+.person-node__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .person-node__compare-badge {
   position: absolute;
   top: -8px;

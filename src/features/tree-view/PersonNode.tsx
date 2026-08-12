@@ -21,11 +21,16 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   // Injected at render time while comparing two people — the graph itself
   // has no notion of a comparison, so this never reaches the adapter.
   const comparisonRole = typeof data.comparisonRole === 'string' ? data.comparisonRole : null
+  // Likewise for the viewpoint: focus is a way of looking at the graph,
+  // not a property of it, so it is injected at render time and never
+  // reaches the adapter, the ranking, or the layout.
+  const isFocal = data.isFocal === true
 
   const classes = [
     'person-node',
     selected ? 'person-node--selected' : null,
     comparisonRole ? 'person-node--comparing' : null,
+    isFocal ? 'person-node--focal' : null,
   ]
     .filter(Boolean)
     .join(' ')
@@ -35,6 +40,9 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
       <Handle type="target" position={Position.Top} />
       <Avatar name={fullName} size={36} />
       <div className="person-node__info">
+        {/* The ring is a shape, not only a colour — and this says the same
+            thing to a screen reader, which perceives neither. */}
+        {isFocal && <span className="person-node__sr-only">Currently viewing from</span>}
         <span className="person-node__name">{fullName}</span>
         {years && <span className="person-node__years">{years}</span>}
         {person.isPlaceholder && <span className="person-node__placeholder">Placeholder</span>}

@@ -7,8 +7,18 @@
   padding: 16px 24px 24px;
 }
 
+/* The back link and the viewpoint trail share one row, so showing where
+   the view has been costs no vertical space — the axis a phone has least
+   of. */
+.tree-canvas__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
 .tree-canvas__back {
-  align-self: flex-start;
+  flex: none;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -19,6 +29,41 @@
 
 .tree-canvas__back:hover {
   color: var(--accent);
+}
+
+.tree-canvas__focus-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--row-band);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.tree-canvas__focus-dismiss {
+  flex: none;
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.tree-canvas__focus-dismiss:hover {
+  color: var(--accent);
+}
+
+.tree-canvas__focus-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tree-canvas__viewport {
@@ -248,5 +293,31 @@
   /* The count is the first thing to go when width is tight. */
   .tree-canvas__groups-badge {
     display: none;
+  }
+
+  .tree-canvas__header {
+    gap: 10px;
+  }
+
+  .tree-canvas__back {
+    /* The words are redundant next to the arrow once space is tight. */
+    font-size: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .tree-canvas__back::before {
+    content: '←';
+    font-size: 18px;
+  }
+
+  .tree-canvas__focus-prompt {
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .tree-canvas__focus-dismiss {
+    min-height: 44px;
   }
 }

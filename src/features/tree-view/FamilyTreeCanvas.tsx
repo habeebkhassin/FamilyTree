@@ -18,6 +18,8 @@ import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth } from './layou
 import { computeRanks } from './rank'
 import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
+import { FocusBreadcrumb } from './FocusBreadcrumb'
+import { PersonInspector } from './PersonInspector'
 import type { FamilyEdge, FamilyNode } from './types'
 import './FamilyTreeCanvas.css'
 
@@ -32,12 +34,23 @@ interface FamilyTreeCanvasProps {
   onSelectPerson: (personId: string) => void
   onBack: () => void
   /**
-   * Optional person to center the viewport on instead of the default
-   * fit-everything view. Nothing calls this yet — it's the centering
-   * mechanism Phase 4D prepares for a future "jump to this person in
-   * the tree" entry point, without building that entry point itself.
+   * The person the tree is currently being explored from. Centers the
+   * viewport on them instead of fitting everything, and gives their card
+   * a halo. Purely a viewpoint — it takes no part in building the graph,
+   * ranking it, or laying it out, so the same records draw the same tree
+   * whoever is focused.
    */
   focalPersonId?: string
+  /** Chosen from the selection inspector — never from an ordinary click. */
+  onFocusPerson: (personId: string) => void
+  /** Oldest first, current last. Empty until the viewpoint has moved. */
+  focusHistory: readonly string[]
+  onFocusBack: () => void
+  /** Who this device's user has said they are, so the trail can say "You". */
+  claimedPersonId: string | null
+  /** Nobody is focused, and the offer to choose has not been waved away. */
+  shouldPromptForFocus: boolean
+  onDismissFocusPrompt: () => void
 }
 
 // Stable across renders/instances — React Flow warns (and re-renders
@@ -215,7 +228,13 @@ function FocalPersonCenterer({ focalPersonId, nodes }: { focalPersonId?: string;
   useEffect(() => {
     if (!focalPersonId) return
     if (!nodes.some((node) => node.id === focalPersonId)) return
-    fitView({ nodes: [{ id: focalPersonId }], duration: 300, maxZoom: 1.1 })
+    // The glide is what preserves orientation when the viewpoint moves —
+    // an instant jump loses the user. For anyone who has asked for less
+    // motion, arriving instantly is the lesser harm.
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    fitView({ nodes: [{ id: focalPersonId }], duration: prefersReducedMotion ? 0 : 300, maxZoom: 1.1 })
   }, [focalPersonId, nodes, fitView])
 
   return null
@@ -232,7 +251,20 @@ export function FamilyTreeCanvas({
   onSelectPerson,
   onBack,
   focalPersonId,
+  onFocusPerson,
+  focusHistory,
+  onFocusBack,
+  claimedPersonId,
+  shouldPromptForFocus,
+  onDismissFocusPrompt,
 }: FamilyTreeCanvasProps) {
+  /**
+   * Selection and focus are different things. Selecting asks "who is
+   * this?"; focusing changes the viewpoint. A click does the first and
+   * offers the second, so the user's perspective never moves without
+   * them saying so.
+   */
+  const [inspectedPersonId, setInspectedPersonId] = useState<string | null>(null)
   const baseGraph = useMemo(
     () => buildFamilyGraph(people, parentLinks, unions),
     [people, parentLinks, unions],
@@ -326,13 +358,21 @@ export function FamilyTreeCanvas({
         }
         if (node.type === 'person') {
           const index = comparisonIds.indexOf(node.id)
-          if (index !== -1) {
-            return { ...node, data: { ...node.data, comparisonRole: index === 0 ? 'a' : 'b' } }
+          const isFocal = node.id === focalPersonId
+          if (index !== -1 || isFocal) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                ...(index !== -1 && { comparisonRole: index === 0 ? 'a' : 'b' }),
+                ...(isFocal && { isFocal: true }),
+              },
+            }
           }
         }
         return node
       }),
-    [layoutedNodes, onToggleFamilyGroup, comparisonIds],
+    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId],
   )
 
   const groupHeaders = useMemo<Node[]>(
@@ -352,19 +392,40 @@ export function FamilyTreeCanvas({
   // Only a person is interactive here. Family groups toggle via their own
   // button (so keyboard activation works), junctions and the generation
   // overlays do nothing at all. In comparison mode a person is picked for
-  // the pair instead of opening their profile — the normal single click
-  // is never repurposed silently.
+  // the pair instead; otherwise a click opens the inspector, which offers
+  // the profile and the viewpoint as two explicit choices rather than
+  // silently doing either.
   const handleNodeClick: NodeMouseHandler = (_event, node) => {
     if (node.type !== 'person') return
     if (isComparing) pickForComparison(node.id)
-    else onSelectPerson(node.id)
+    else setInspectedPersonId(node.id)
   }
+
+  const inspectedPerson = inspectedPersonId ? peopleById.get(inspectedPersonId) : undefined
 
   return (
     <div className="tree-canvas">
-      <button type="button" className="tree-canvas__back" onClick={onBack}>
-        ← Back to family tree
-      </button>
+      <div className="tree-canvas__header">
+        <button type="button" className="tree-canvas__back" onClick={onBack}>
+          ← Back to family tree
+        </button>
+        <FocusBreadcrumb
+          history={focusHistory}
+          focalPersonId={focalPersonId ?? null}
+          claimedPersonId={claimedPersonId}
+          peopleById={peopleById}
+          onBack={onFocusBack}
+        />
+      </div>
+
+      {shouldPromptForFocus && (
+        <p className="tree-canvas__focus-prompt">
+          <span>Pick someone to explore the tree from their point of view.</span>
+          <button type="button" className="tree-canvas__focus-dismiss" onClick={onDismissFocusPrompt}>
+            Not now
+          </button>
+        </p>
+      )}
 
       <div className="tree-canvas__viewport">
         {isLayouting && layoutedNodes.length === 0 ? (
@@ -408,6 +469,19 @@ export function FamilyTreeCanvas({
               <FocalPersonCenterer focalPersonId={focalPersonId} nodes={layoutedNodes} />
             </ReactFlow>
           </ReactFlowProvider>
+        )}
+
+        {inspectedPerson && !isComparing && (
+          <PersonInspector
+            person={inspectedPerson}
+            isFocal={inspectedPerson.id === focalPersonId}
+            onFocus={() => {
+              onFocusPerson(inspectedPerson.id)
+              setInspectedPersonId(null)
+            }}
+            onOpenProfile={() => onSelectPerson(inspectedPerson.id)}
+            onClose={() => setInspectedPersonId(null)}
+          />
         )}
 
         {comparisonPairKey && comparisonAId && comparisonBId && (

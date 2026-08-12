@@ -18,6 +18,7 @@ import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
 import { FamilyTreeHome } from './FamilyTreeHome'
 import { useFamilyGraph } from './useFamilyGraph'
+import { useFocalPerson } from './useFocalPerson'
 import './FamilyTreeWorkspace.css'
 
 interface FamilyTreeWorkspaceProps {
@@ -58,6 +59,15 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
   // The one place the interface consults the policy engine. Components
   // receive decisions; none of them reason about roles themselves.
   const policy = usePolicy(tree.id)
+  // The viewpoint lives here rather than in the canvas so the trail
+  // survives stepping into a profile and back.
+  const focal = useFocalPerson({
+    familyTreeId: tree.id,
+    people,
+    claims: policy.claims,
+    actorId: policy.actorId,
+    isReady: status === 'ready',
+  })
   const {
     familyGroups,
     members: familyGroupMembers,
@@ -232,6 +242,13 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
             onToggleFamilyGroup={toggleFamilyGroup}
             onSelectPerson={openProfile}
             onBack={goHome}
+            focalPersonId={focal.focalPersonId ?? undefined}
+            onFocusPerson={focal.focusOn}
+            focusHistory={focal.history}
+            onFocusBack={focal.goBack}
+            claimedPersonId={policy.claimedPersonId}
+            shouldPromptForFocus={focal.shouldPromptForFocus}
+            onDismissFocusPrompt={focal.dismissPrompt}
           />
         )}
 

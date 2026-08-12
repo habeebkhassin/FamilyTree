@@ -101,6 +101,12 @@ export function usePolicy(familyTreeId: string) {
     status,
     actorId,
     role,
+    /**
+     * Raw claim rows for this tree, including rejected ones. Consumed by
+     * the focal-person resolver, which needs the verified/self-asserted
+     * distinction that `claimedPersonId` collapses.
+     */
+    claims: governance.claims,
     /** False for every tree that has never had a member — which is all of them today. */
     isGoverned: governance.members.some((member) => member.familyTreeId === familyTreeId),
     check,

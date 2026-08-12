@@ -1,0 +1,96 @@
+.focus-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.focus-breadcrumb__back {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.focus-breadcrumb__back:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.focus-breadcrumb__back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.focus-breadcrumb__label {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.focus-breadcrumb__trail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.focus-breadcrumb__step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.focus-breadcrumb__separator {
+  color: var(--text-secondary);
+}
+
+.focus-breadcrumb__person {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.focus-breadcrumb__person--current {
+  color: var(--text);
+  font-family: var(--font-heading);
+}
+
+/*
+  On a phone only the current viewpoint is kept — the trail is the first
+  thing worth losing when the row is competing with the back link, and the
+  back button still provides the way out.
+*/
+@media (max-width: 480px) {
+  .focus-breadcrumb__label {
+    display: none;
+  }
+
+  .focus-breadcrumb__step:not(:last-child) {
+    display: none;
+  }
+
+  .focus-breadcrumb__step:last-child .focus-breadcrumb__separator {
+    display: none;
+  }
+
+  .focus-breadcrumb__back {
+    width: 44px;
+    height: 44px;
+  }
+}
