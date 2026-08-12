@@ -5,6 +5,7 @@ import '@xyflow/react/dist/style.css'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
 import { buildFamilyGraph } from './graphAdapter'
 import { projectFamilyGroups } from './groupProjection'
+import { projectFamilyTreeView } from './viewProjection'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
@@ -270,17 +271,50 @@ export function FamilyTreeCanvas({
     [people, parentLinks, unions],
   )
 
-  // Ranks come from the genealogy graph and are computed BEFORE any group
-  // is projected, then handed to layout unchanged. That is what makes a
-  // person's generation independent of what happens to be collapsed.
+  // Ranks come from the genealogy graph and are computed BEFORE any view
+  // or group is projected, then handed to layout unchanged. That is what
+  // makes a person's generation independent of both what is collapsed and
+  // how the family is currently being looked at.
   const genealogyRanks = useMemo(() => computeRanks(baseGraph.nodes, baseGraph.edges), [baseGraph])
+
+  /**
+   * The pipeline, in full:
+   *
+   *   buildFamilyGraph  →  computeRanks  →  projectFamilyTreeView
+   *     →  projectFamilyGroups  →  layoutFamilyGraph  →  React Flow
+   *
+   * Views are presentation projections. They never modify genealogy facts
+   * and must not be ranked independently — the canonical ranks above are
+   * threaded through every stage untouched.
+   *
+   * Only `full` exists today, and it is an identity projection: the nodes,
+   * edges and ranks come back by reference, so inserting this seam changed
+   * nothing that reaches the layout.
+   */
+  const viewGraph = useMemo(
+    () => projectFamilyTreeView(baseGraph, genealogyRanks, { view: 'full', focalPersonId }),
+    [baseGraph, genealogyRanks, focalPersonId],
+  )
+
+  // Destructured deliberately. The full view ignores focalPersonId, so
+  // these three are the same references whoever is focused — depending on
+  // them rather than on `viewGraph` keeps a change of viewpoint from
+  // re-running the group projection and re-laying out the whole tree.
+  const { nodes: viewNodes, edges: viewEdges, ranks: viewRanks } = viewGraph
 
   // The genealogy graph is built first and never altered; collapsing is a
   // pure projection layered on top of it, so toggling a group can only
   // ever change what is drawn — never a ParentLink, Union, or membership.
   const projectedGraph = useMemo(
-    () => projectFamilyGroups(baseGraph, familyGroups, familyGroupMembers, collapsedGroupIds, genealogyRanks),
-    [baseGraph, familyGroups, familyGroupMembers, collapsedGroupIds, genealogyRanks],
+    () =>
+      projectFamilyGroups(
+        { nodes: viewNodes, edges: viewEdges },
+        familyGroups,
+        familyGroupMembers,
+        collapsedGroupIds,
+        viewRanks,
+      ),
+    [viewNodes, viewEdges, viewRanks, familyGroups, familyGroupMembers, collapsedGroupIds],
   )
 
   const [layoutedNodes, setLayoutedNodes] = useState<FamilyNode[]>([])
