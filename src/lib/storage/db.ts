@@ -1,6 +1,12 @@
 import Dexie, { type Table } from 'dexie'
 import type { FamilyTree, Person, ParentLink, Union, MediaRecord, FamilyGroup, FamilyGroupMember } from '../../types'
 import type { ChangeEvent, OutboxEntry, SyncState } from '../sync/changeTypes'
+import type {
+  FamilyTreeMember,
+  GovernanceConfig,
+  Invitation,
+  PersonClaim,
+} from '../policy/membershipTypes'
 
 /**
  * Exported (rather than kept module-private) only so tests can open a
@@ -28,6 +34,16 @@ export class FamilyTreeDatabase extends Dexie {
   changeEvents!: Table<ChangeEvent, number>
   outbox!: Table<OutboxEntry, string>
   syncState!: Table<SyncState, string>
+  /**
+   * Phase 5B-2 governance. Kept in the same database so a multi-record
+   * governance change can be one transaction, but deliberately OUTSIDE the
+   * change log: none of these tables appears in SYNC_TABLES, and no
+   * governance mutation calls recordChange.
+   */
+  familyTreeMembers!: Table<FamilyTreeMember, string>
+  personClaims!: Table<PersonClaim, string>
+  invitations!: Table<Invitation, string>
+  governance!: Table<GovernanceConfig, string>
 
   constructor(name = 'FamilyTreeDatabase') {
     super(name)
@@ -80,6 +96,30 @@ export class FamilyTreeDatabase extends Dexie {
       changeEvents: '++clientSeq, &id, changeSetId, familyTreeId, entity, entityId, [entity+entityId], createdAt',
       outbox: 'eventId, familyTreeId, createdAt',
       syncState: 'familyTreeId',
+    })
+
+    // Phase 5B-2: governance. Four brand-new stores and nothing else — no
+    // version(1)/(2)/(3) store is re-declared, so every existing
+    // FamilyTree, Person, ParentLink, Union, FamilyGroup, membership and
+    // change event is left exactly as it was and no upgrade function is
+    // needed. A tree with no rows in any of these is an ungoverned local
+    // tree, which is what every existing tree is and must remain.
+    //
+    // These stores are NOT part of the change log. Governance is not an
+    // ordinary family fact — see governanceInternal.ts for why permissions
+    // must never travel the content event stream.
+    //
+    // Indexes are deliberately not unique. A revoked membership or a
+    // rejected claim keeps its row for the audit trail, and a unique
+    // compound index would let one of those permanently occupy the slot
+    // and block a later legitimate row. Uniqueness is enforced in the
+    // storage modules instead, where "ignoring revoked and rejected rows"
+    // can actually be expressed.
+    this.version(4).stores({
+      familyTreeMembers: 'id, familyTreeId, actorId, [familyTreeId+actorId], status',
+      personClaims: 'id, familyTreeId, personId, actorId, [familyTreeId+actorId], [familyTreeId+personId]',
+      invitations: 'id, familyTreeId, status, expiresAt',
+      governance: 'familyTreeId',
     })
   }
 }

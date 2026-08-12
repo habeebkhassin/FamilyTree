@@ -7,6 +7,7 @@ import { FamilyGroupForm } from '../familyGroups/FamilyGroupForm'
 import type { FamilyGroupFormValues } from '../familyGroups/FamilyGroupForm'
 import { FamilyGroupsOverview } from '../familyGroups/FamilyGroupsOverview'
 import { LocalActorBadge } from '../identity/LocalActorBadge'
+import { usePolicy } from '../policy/usePolicy'
 import { useFamilyGroups } from '../familyGroups/useFamilyGroups'
 import { AddRelativeScreen } from '../people/AddRelativeScreen'
 import { PersonForm } from '../people/PersonForm'
@@ -54,6 +55,9 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
     connectExisting,
     createRelative,
   } = useFamilyGraph(tree.id)
+  // The one place the interface consults the policy engine. Components
+  // receive decisions; none of them reason about roles themselves.
+  const policy = usePolicy(tree.id)
   const {
     familyGroups,
     members: familyGroupMembers,
@@ -200,7 +204,7 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
         <button type="button" className="workspace__brand" onClick={goHome}>
           {tree.name}
         </button>
-        <LocalActorBadge />
+        <LocalActorBadge onActorChange={() => void policy.reload()} />
       </header>
 
       <div className="workspace__content">
@@ -305,6 +309,17 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
             return (
               <PersonProfile
                 person={person}
+                policy={{
+                  canEdit: policy.check('person.update', { personId: person.id }),
+                  canDelete: policy.check('person.delete', { personId: person.id }),
+                  isClaimedByYou: policy.claimedPersonId === person.id,
+                  isClaimedByAnother: policy.isClaimedByAnother(person.id),
+                  // Claiming is only offered when nobody holds this record
+                  // and this actor has not already said they are someone else.
+                  ...(policy.claimedPersonId === null && !policy.isClaimedByAnother(person.id)
+                    ? { onClaim: () => void policy.claimPerson(person.id) }
+                    : {}),
+                }}
                 parents={parents}
                 children={children}
                 siblings={siblings}

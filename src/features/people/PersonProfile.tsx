@@ -7,13 +7,33 @@ import type { FamilyGroup } from '../../types'
 import type { Person } from '../../types'
 import { PersonFamilyGroupsCard } from '../familyGroups/PersonFamilyGroupsCard'
 import type { PersonFamilyGroupMembership } from '../familyGroups/PersonFamilyGroupsCard'
+import type { PolicyDecision } from '../../lib/policy/can'
+import { describePolicyReason } from '../policy/policyMessages'
+import { PersonClaimCard } from './PersonClaimCard'
 import { formatFullDate, formatName } from './personDisplay'
 import { RelationshipSection } from './RelationshipSection'
 import type { RelationshipItem, RelationshipKind } from './types'
 import './PersonProfile.css'
 
+/**
+ * What the policy layer has decided about this person, resolved by the
+ * caller through usePolicy. The profile renders the decision; it never
+ * reasons about roles itself.
+ */
+export interface PersonPolicyView {
+  canEdit: PolicyDecision
+  canDelete: PolicyDecision
+  /** Whether this device's actor has said this person is them. */
+  isClaimedByYou: boolean
+  /** Whether somebody else has already said so. */
+  isClaimedByAnother: boolean
+  /** Absent when claiming is not on offer — e.g. no local identity yet. */
+  onClaim?: () => void
+}
+
 interface PersonProfileProps {
   person: Person
+  policy: PersonPolicyView
   parents: RelationshipItem[]
   siblings: RelationshipItem[]
   partners: RelationshipItem[]
@@ -33,6 +53,7 @@ interface PersonProfileProps {
 
 export function PersonProfile({
   person,
+  policy,
   parents,
   siblings,
   partners,
@@ -69,14 +90,36 @@ export function PersonProfile({
           </div>
         </div>
         <div className="person-profile__actions">
-          <Button variant="secondary" onClick={onEdit}>
+          <Button
+            variant="secondary"
+            onClick={onEdit}
+            disabled={!policy.canEdit.allowed}
+            title={describePolicyReason(policy.canEdit.reason) || undefined}
+          >
             Edit
           </Button>
-          <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
+          <Button
+            variant="danger"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={!policy.canDelete.allowed}
+            title={describePolicyReason(policy.canDelete.reason) || undefined}
+          >
             Delete
           </Button>
         </div>
       </Card>
+
+      {/*
+        Why an action is unavailable, not just that it is. The reason comes
+        from the policy engine so the wording can never drift from the rule.
+      */}
+      {(!policy.canEdit.allowed || !policy.canDelete.allowed) && (
+        <p className="person-profile__policy-note" role="status">
+          {describePolicyReason(policy.canEdit.allowed ? policy.canDelete.reason : policy.canEdit.reason)}
+        </p>
+      )}
+
+      <PersonClaimCard person={person} fullName={fullName} policy={policy} />
 
       {person.notes && (
         <Card className="person-profile__notes">

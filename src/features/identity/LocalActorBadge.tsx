@@ -17,7 +17,17 @@ import './LocalActorBadge.css'
  * verified would be the one genuinely harmful thing this component could
  * do. It grants no permissions and gates nothing.
  */
-export function LocalActorBadge() {
+interface LocalActorBadgeProps {
+  /**
+   * Called when the editing identity changes. Who is editing decides both
+   * how edits are attributed and what the interface offers, so the policy
+   * layer has to be told rather than left showing the previous actor's
+   * affordances.
+   */
+  onActorChange?: () => void
+}
+
+export function LocalActorBadge({ onActorChange }: LocalActorBadgeProps = {}) {
   const [actors, setActors] = useState<LocalActor[]>([])
   const [current, setCurrent] = useState<LocalActor | null>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -53,6 +63,7 @@ export function LocalActorBadge() {
   const switchTo = (actorId: string) => {
     setCurrentLocalActor(actorId)
     refresh()
+    onActorChange?.()
     setIsOpen(false)
   }
 
@@ -62,6 +73,7 @@ export function LocalActorBadge() {
     createLocalActor(newName)
     setNewName('')
     refresh()
+    onActorChange?.()
     setIsOpen(false)
   }
 

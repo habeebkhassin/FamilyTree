@@ -95,3 +95,26 @@
     flex: 1;
   }
 }
+
+.person-profile__policy-note {
+  margin: -4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.person-profile__claim-state {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.person-profile__claim-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.person-profile__claim .button {
+  margin-top: 12px;
+}
