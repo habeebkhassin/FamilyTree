@@ -6,6 +6,7 @@ import type { FamilyGroupMembership } from '../familyGroups/FamilyGroupDetail'
 import { FamilyGroupForm } from '../familyGroups/FamilyGroupForm'
 import type { FamilyGroupFormValues } from '../familyGroups/FamilyGroupForm'
 import { FamilyGroupsOverview } from '../familyGroups/FamilyGroupsOverview'
+import { LocalActorBadge } from '../identity/LocalActorBadge'
 import { useFamilyGroups } from '../familyGroups/useFamilyGroups'
 import { AddRelativeScreen } from '../people/AddRelativeScreen'
 import { PersonForm } from '../people/PersonForm'
@@ -199,6 +200,7 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
         <button type="button" className="workspace__brand" onClick={goHome}>
           {tree.name}
         </button>
+        <LocalActorBadge />
       </header>
 
       <div className="workspace__content">

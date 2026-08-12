@@ -1,3 +1,4 @@
+import { ensureCurrentLocalActor } from '../identity/localActor'
 import { db } from '../storage/db'
 import { currentChangeSetId } from './changeSet'
 import type { ChangeEvent, ChangeOperation, NewChangeEvent, SyncEntity, SyncRecord } from './changeTypes'
@@ -23,17 +24,27 @@ export interface RecordChangeInput {
  *
  * This is the only function in the codebase that writes to the log, and
  * nothing anywhere updates or deletes from it.
+ *
+ * Attribution is resolved here rather than passed in, so no storage
+ * function's signature mentions an actor and no caller can attribute an
+ * edit to someone else.
  */
 export async function recordChange(input: RecordChangeInput): Promise<void> {
   const createdAt = new Date().toISOString()
+  // Synchronous by design: this runs inside the caller's Dexie transaction,
+  // and awaiting a non-Dexie promise here would leave the transaction zone
+  // and break the record/event/outbox atomicity guarantee. Resolves to null
+  // if local identity is unavailable — an unattributed event is honest, a
+  // fabricated actor would corrupt the audit trail.
+  const actor = ensureCurrentLocalActor()
+
   const event: NewChangeEvent = {
     id: crypto.randomUUID(),
     // Derived from the ambient transaction, so a cascade groups itself
     // without any caller having to pass an id down.
     changeSetId: currentChangeSetId(),
     familyTreeId: input.familyTreeId,
-    // No authentication in Phase 5A. Genuinely nobody, not a placeholder.
-    actorUserId: null,
+    actorId: actor?.id ?? null,
     entity: input.entity,
     entityId: input.entityId,
     op: input.op,

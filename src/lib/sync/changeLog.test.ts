@@ -28,10 +28,64 @@ import {
 } from '../storage/familyGroups'
 import { createPersonWithRelationship } from '../storage/linkRelative'
 import { restoreEntity, revertChangeEvent } from '../storage/undo'
+import {
+  createLocalActor,
+  getCurrentLocalActor,
+  listLocalActors,
+  setCurrentLocalActor,
+} from '../identity/localActor'
 import { getChangeEvents, getChangeEventsForEntity, getChangeSet } from './changeLog'
 import { getOutboxEntries, getOutboxSize } from './outbox'
 import { getSyncState } from './syncState'
 import type { ChangeEvent, SyncEntity } from './changeTypes'
+
+// Node has no localStorage, so local identity gets the same treatment
+// fake-indexeddb gives Dexie: a real implementation of the real interface,
+// installed globally, so the production code path is what runs. Defined as
+// a getter that can be made to throw, which lets a test reproduce the
+// storage-unavailable case (private browsing, exhausted quota) exactly as
+// the browser presents it.
+const LOCAL_IDENTITY_KEY = 'familytree.localIdentity'
+
+function createMemoryStorage(): Storage {
+  const entries = new Map<string, string>()
+  return {
+    get length() {
+      return entries.size
+    },
+    clear: () => entries.clear(),
+    getItem: (key: string) => entries.get(key) ?? null,
+    key: (index: number) => [...entries.keys()][index] ?? null,
+    removeItem: (key: string) => void entries.delete(key),
+    setItem: (key: string, value: string) => void entries.set(key, String(value)),
+  } as Storage
+}
+
+let backingStorage: Storage | null = createMemoryStorage()
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  get() {
+    if (!backingStorage) throw new Error('localStorage is unavailable')
+    return backingStorage
+  },
+})
+
+/** Runs `fn` as though the browser refused access to localStorage entirely. */
+async function withoutLocalStorage<T>(fn: () => Promise<T>): Promise<T> {
+  const saved = backingStorage
+  backingStorage = null
+  try {
+    return await fn()
+  } finally {
+    backingStorage = saved
+  }
+}
+
+/** Puts the device back to "never had an identity". */
+function forgetLocalIdentity(): void {
+  localStorage.removeItem(LOCAL_IDENTITY_KEY)
+}
 
 async function newTree(name = 'Test Tree') {
   return createFamilyTree({ name: `${name} ${crypto.randomUUID()}` })
@@ -109,7 +163,7 @@ test('3. parent links, unions, groups and memberships all record events', async 
   assert.equal(ofEntity(events, 'familyTree', tree.id).length, 1, 'creating the tree was itself an event')
 })
 
-test('4. every event is local-only: actorUserId and serverSeq are null, never faked', async () => {
+test('4. every event is local-only: serverSeq is null, never faked, and the actor is device-local', async () => {
   const tree = await newTree()
   const person = await newPerson(tree.id)
   await updatePerson(person.id, { firstName: 'Renamed' })
@@ -118,7 +172,9 @@ test('4. every event is local-only: actorUserId and serverSeq are null, never fa
   const events = await getChangeEvents(tree.id)
   assert.ok(events.length >= 3)
   for (const event of events) {
-    assert.equal(event.actorUserId, null, 'no authentication exists in 5A')
+    // 5B-1 fills actorId from a device-local actor. It is attribution, not
+    // authentication: still no account, no server, no verification.
+    assert.equal(typeof event.actorId, 'string', 'edits are attributed to the local actor')
     assert.equal(event.serverSeq, null, 'no server exists in 5A')
     assert.equal(event.recordedAt, null)
     assert.ok(event.createdAt, 'the client clock is still recorded')
@@ -883,4 +939,266 @@ test('37. a tombstoned person is not offered as a live member or founder', async
       }),
     /no longer exists/,
   )
+})
+
+// ── Phase 5B-1: device-local actor and attribution ───────────────────
+// The change log stops recording `null` for "who did this". The actor is
+// a name on this device — attribution, never authentication.
+
+test('38. the first edit on a device creates a local actor and attributes itself to it', async () => {
+  forgetLocalIdentity()
+  assert.equal(getCurrentLocalActor(), null, 'no identity before first use')
+
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'FirstUse')
+
+  const actor = getCurrentLocalActor()
+  assert.ok(actor, 'first use created one')
+  assert.ok(actor.displayName, 'and gave it a name rather than leaving it blank')
+
+  const [event] = await getChangeEventsForEntity('person', person.id)
+  assert.equal((event as ChangeEvent).actorId, actor.id)
+})
+
+test('39. the actor survives a reload, because localStorage is its only home', async () => {
+  forgetLocalIdentity()
+  const actor = createLocalActor('Habeeb')
+
+  // Whatever crosses a reload is exactly this string and nothing else.
+  const persisted = localStorage.getItem(LOCAL_IDENTITY_KEY)
+  assert.ok(persisted, 'the identity was written to persistent storage')
+
+  // Wiping it proves there is no hidden in-memory copy propping it up...
+  localStorage.clear()
+  assert.equal(getCurrentLocalActor(), null, 'nothing is cached in module state')
+
+  // ...and restoring only that string is enough to come back, which is
+  // precisely what a page reload does.
+  localStorage.setItem(LOCAL_IDENTITY_KEY, persisted)
+  assert.deepEqual(getCurrentLocalActor(), actor, 'the same actor, after reinitialization')
+})
+
+test('40. a new mutation is attributed to whichever actor is current', async () => {
+  forgetLocalIdentity()
+  const actor = createLocalActor('Ayesha')
+
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'Attributed')
+
+  const [event] = await getChangeEventsForEntity('person', person.id)
+  assert.equal((event as ChangeEvent).actorId, actor.id)
+})
+
+test('41. consecutive mutations by the same actor all carry that actor', async () => {
+  forgetLocalIdentity()
+  const actor = createLocalActor('Steady')
+
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'Same')
+  await updatePerson(person.id, { firstName: 'Same Again' })
+  await updatePerson(person.id, { lastName: 'Still' })
+
+  const events = await getChangeEventsForEntity('person', person.id)
+  assert.equal(events.length, 3)
+  assert.deepEqual([...new Set(events.map((event) => event.actorId))], [actor.id])
+  assert.equal(new Set(events.map((event) => event.changeSetId)).size, 3, 'three actions, unchanged')
+})
+
+test('42. switching actor changes future attribution and rewrites no history', async () => {
+  forgetLocalIdentity()
+  const first = createLocalActor('Habeeb')
+
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'Witness')
+  const beforeSwitch = await getChangeEventsForEntity('person', person.id)
+
+  const second = createLocalActor('Ayesha')
+  assert.equal(getCurrentLocalActor()?.id, second.id, 'creating an actor makes it current')
+
+  await updatePerson(person.id, { firstName: 'Renamed' })
+
+  const events = await getChangeEventsForEntity('person', person.id)
+  assert.equal(events[0]?.actorId, first.id, 'the earlier event still names who actually did it')
+  assert.equal(events[1]?.actorId, second.id, 'the later event names the new actor')
+  assert.deepEqual([events[0]], beforeSwitch, 'the earlier event is byte-for-byte untouched')
+
+  // And switching back is just as inert.
+  setCurrentLocalActor(first.id)
+  await updatePerson(person.id, { lastName: 'Third' })
+  const after = await getChangeEventsForEntity('person', person.id)
+  assert.deepEqual(
+    after.map((event) => event.actorId),
+    [first.id, second.id, first.id],
+  )
+})
+
+test('43. an event written with no identity available stays unattributed forever', async () => {
+  const tree = await newTree()
+
+  // Reproduces both the pre-5B-1 world and a browser that refuses storage.
+  const person = await withoutLocalStorage(async () => newPerson(tree.id, 'Anonymous'))
+
+  const [event] = await getChangeEventsForEntity('person', person.id)
+  assert.equal((event as ChangeEvent).actorId, null, 'no actor is invented to fill the gap')
+
+  // Identity arriving later must not retroactively claim earlier work.
+  forgetLocalIdentity()
+  const actor = createLocalActor('Latecomer')
+  await updatePerson(person.id, { firstName: 'Named' })
+
+  const events = await getChangeEventsForEntity('person', person.id)
+  assert.equal(events[0]?.actorId, null, 'history is not backfilled')
+  assert.equal(events[1]?.actorId, actor.id)
+})
+
+test('44. creating or switching actors never touches an existing event', async () => {
+  forgetLocalIdentity()
+  createLocalActor('Original')
+
+  const tree = await newTree()
+  await newPerson(tree.id, 'Frozen')
+  // Each read returns fresh objects from Dexie, so this is a real snapshot
+  // and not an alias of what the second read will return.
+  const snapshot = await getChangeEvents(tree.id)
+
+  const other = createLocalActor('Other')
+  setCurrentLocalActor(other.id)
+  createLocalActor('Third')
+
+  assert.deepEqual(await getChangeEvents(tree.id), snapshot, 'the log is untouched by identity changes')
+})
+
+test('45. a cascade is attributed to one actor and remains one change set', async () => {
+  forgetLocalIdentity()
+  const actor = createLocalActor('Cascader')
+
+  const tree = await newTree()
+  const parent = await newPerson(tree.id, 'Parent')
+  const child = await newPerson(tree.id, 'Child')
+  const partner = await newPerson(tree.id, 'Partner')
+  await createParentLink({
+    familyTreeId: tree.id, parentId: parent.id, childId: child.id, relationship: 'biological',
+  })
+  await createUnion({
+    familyTreeId: tree.id, partnerAId: parent.id, partnerBId: partner.id, status: 'married',
+  })
+  const group = await createFamilyGroup({
+    familyTreeId: tree.id, name: 'Founded', originPersonId: parent.id, establishedPrecision: 'unknown',
+  })
+  await addFamilyGroupMember({ familyTreeId: tree.id, familyGroupId: group.id, personId: parent.id })
+
+  const before = (await getChangeEvents(tree.id)).length
+  await deletePerson(parent.id)
+  const produced = (await getChangeEvents(tree.id)).slice(before)
+
+  assert.equal(produced.length, 5, 'the 5A cascade shape is unchanged')
+  assert.deepEqual([...new Set(produced.map((event) => event.actorId))], [actor.id], 'one person did one thing')
+  assert.equal(new Set(produced.map((event) => event.changeSetId)).size, 1, 'still one change set')
+
+  // Restoring is a separate action by whoever is current at the time.
+  const restorer = createLocalActor('Restorer')
+  await restorePerson(parent.id)
+  const restoreEvent = (await getChangeEventsForEntity('person', parent.id)).at(-1) as ChangeEvent
+  assert.equal(restoreEvent.op, 'restore')
+  assert.equal(restoreEvent.actorId, restorer.id)
+})
+
+test('46. a rolled-back mutation leaves no attributed event and no outbox entry', async () => {
+  forgetLocalIdentity()
+  createLocalActor('Doomed Writer')
+
+  const tree = await newTree()
+  const otherTree = await newTree('Other')
+  const foreignAnchor = await newPerson(otherTree.id, 'Foreign')
+
+  const eventsBefore = await getChangeEvents(tree.id)
+  const outboxBefore = await getOutboxSize(tree.id)
+
+  await assert.rejects(() =>
+    createPersonWithRelationship(
+      { familyTreeId: tree.id, firstName: 'Never', lastName: 'Committed', gender: 'unknown' },
+      foreignAnchor.id,
+      { kind: 'parent', relationship: 'biological' },
+    ),
+  )
+
+  const after = await getChangeEvents(tree.id)
+  assert.deepEqual(after, eventsBefore, 'no event, attributed or otherwise, survived')
+  assert.equal(await getOutboxSize(tree.id), outboxBefore)
+})
+
+test('47. two people sharing one device produce a history that tells them apart', async () => {
+  forgetLocalIdentity()
+  const habeeb = createLocalActor('Habeeb')
+
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'Grandmother')
+  await updatePerson(person.id, { firstName: 'Grandma' })
+
+  const ayesha = createLocalActor('Ayesha')
+  await updatePerson(person.id, { lastName: 'Bello' })
+  await updatePerson(person.id, { notes: 'Remembers the move in 1974.' })
+
+  setCurrentLocalActor(habeeb.id)
+  await updatePerson(person.id, { notes: 'Remembers the move in 1975.' })
+
+  const history = await getChangeEventsForEntity('person', person.id)
+  assert.deepEqual(
+    history.map((event) => event.actorId),
+    [habeeb.id, habeeb.id, ayesha.id, ayesha.id, habeeb.id],
+  )
+
+  // Which is enough to answer "who last corrected this?" from the log alone.
+  const last = history.at(-1) as ChangeEvent
+  const names = new Map(listLocalActors().map((candidate) => [candidate.id, candidate.displayName]))
+  assert.equal(names.get(last.actorId as string), 'Habeeb')
+  assert.ok(listLocalActors().length >= 2, 'both actors remain known to the device')
+})
+
+test('48. the actor roster rejects nonsense rather than corrupting attribution', async () => {
+  forgetLocalIdentity()
+
+  assert.throws(() => createLocalActor('   '), /display name/i, 'a blank name is not an identity')
+  assert.throws(() => setCurrentLocalActor(crypto.randomUUID()), /Unknown local actor/)
+
+  // Corrupt storage degrades to "no identity", never to a broken app.
+  localStorage.setItem(LOCAL_IDENTITY_KEY, '{ not json')
+  assert.equal(getCurrentLocalActor(), null)
+  assert.deepEqual(listLocalActors(), [])
+
+  // And a selection pointing at an actor that no longer exists is ignored.
+  forgetLocalIdentity()
+  const actor = createLocalActor('Real')
+  localStorage.setItem(
+    LOCAL_IDENTITY_KEY,
+    JSON.stringify({ actors: [actor], currentActorId: crypto.randomUUID() }),
+  )
+  assert.equal(getCurrentLocalActor(), null, 'a dangling selection is not trusted')
+
+  // The next edit adopts the known actor rather than inventing a second.
+  const tree = await newTree()
+  const person = await newPerson(tree.id, 'Adopted')
+  const [event] = await getChangeEventsForEntity('person', person.id)
+  assert.equal((event as ChangeEvent).actorId, actor.id)
+  assert.equal(listLocalActors().length, 1, 'no duplicate identity was created')
+})
+
+test('49. attribution is recorded for every logged entity, not just people', async () => {
+  forgetLocalIdentity()
+  const actor = createLocalActor('Everywhere')
+
+  const tree = await newTree()
+  const a = await newPerson(tree.id, 'A')
+  const b = await newPerson(tree.id, 'B')
+  await createParentLink({ familyTreeId: tree.id, parentId: a.id, childId: b.id, relationship: 'biological' })
+  await createUnion({ familyTreeId: tree.id, partnerAId: a.id, partnerBId: b.id, status: 'married' })
+  const group = await createFamilyGroup({ familyTreeId: tree.id, name: 'G', establishedPrecision: 'unknown' })
+  await addFamilyGroupMember({ familyTreeId: tree.id, familyGroupId: group.id, personId: a.id })
+  await updateFamilyTree(tree.id, { name: 'Renamed Tree' })
+
+  const events = await getChangeEvents(tree.id)
+  assert.equal(new Set(events.map((event) => event.entity)).size, 6, 'every syncable entity is represented')
+  for (const event of events) {
+    assert.equal(event.actorId, actor.id, event.entity + ' must be attributed too')
+  }
 })

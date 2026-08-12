@@ -9,8 +9,13 @@
  * layout and graphAdapter keep working from plain record snapshots, which
  * is what will let them run unchanged against synced data later.
  *
- * Deliberately absent in 5A: any transport, adapter, authentication,
- * server sequence, or conflict resolution.
+ * Phase 5B-1 adds attribution: events now carry the id of a device-local
+ * actor (lib/identity/localActor) instead of a permanent null. That is a
+ * name on this device, not an account — still no authentication, and
+ * nothing here may be used to decide what anyone is allowed to do.
+ *
+ * Deliberately absent: any transport, adapter, authentication,
+ * authorization, server sequence, or conflict resolution.
  */
 export type {
   ChangeEvent,
@@ -30,5 +35,18 @@ export {
   recordChange,
 } from './changeLog'
 export { currentChangeSetId } from './changeSet'
+/**
+ * Phase 5B-3. Pure and transport-free: it merges event streams and has no
+ * idea where they came from. Nothing persists its output yet.
+ */
+export type {
+  ConflictResolution,
+  FieldConflict,
+  ReconciledRecord,
+  ReconciliationAnomaly,
+  ReconciliationAnomalyKind,
+  ReconciliationResult,
+} from './reconciler'
+export { changeSetsFrom, reconcileEvents } from './reconciler'
 export { getOutboxEntries, getOutboxSize, getPendingChangeEvents } from './outbox'
 export { ensureSyncState, getSyncState } from './syncState'

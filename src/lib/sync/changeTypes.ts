@@ -81,11 +81,21 @@ export interface ChangeEvent {
   changeSetId: string
   familyTreeId: string
   /**
-   * Who did it. Null in Phase 5A because there is no authentication yet —
-   * this is a genuine "no account involved", not a placeholder to be
-   * swapped for a fake identity.
+   * Who did it: the id of the device-local actor in effect at the time
+   * (see lib/identity/localActor).
+   *
+   * Named `actorId` rather than `actorUserId` because a local actor is NOT
+   * a user account — it is a self-asserted name on one device. It is
+   * ATTRIBUTION, never authorization: nothing may grant a capability on the
+   * strength of this field, because the client that writes it also chooses
+   * it. When accounts exist, an actor is linked to one rather than
+   * replaced.
+   *
+   * Null means genuinely unattributed, and stays null: events written
+   * before this device had any identity are left exactly as recorded rather
+   * than backfilled with an actor who was not there.
    */
-  actorUserId: string | null
+  actorId: string | null
   entity: SyncEntity
   entityId: string
   op: ChangeOperation

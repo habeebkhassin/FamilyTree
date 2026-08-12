@@ -68,6 +68,25 @@ To enable Pages on GitHub: **Settings → Pages → Source → GitHub Actions**.
   future server and is always `null` today. The `outbox` records what would
   need uploading — there is no network, no account and no backend yet, and
   a tree with no owner is a perfectly valid local tree.
+- **Local identity** — `src/lib/identity/` records *who* made a change. A
+  `LocalActor` is a name kept on this device: self-asserted, with no
+  account, no password and nothing verified. `ChangeEvent.actorId` is
+  therefore **attribution, not authorization** — nothing may grant a
+  capability on the strength of it, since the client that writes it also
+  chooses it. Switching actor affects only future events; events recorded
+  before this device had an identity keep `actorId: null` and are never
+  backfilled.
+- **Reconciliation** — `src/lib/sync/reconciler.ts` merges two event
+  streams into one deterministic result: same events, same outcome, in any
+  order. It is pure — no Dexie, no network, no clock — so it is testable
+  long before a backend exists. Conflicts are resolved per *field*, so two
+  devices editing different fields of one person both keep their work.
+  Deterministic is not the same as causally perfect: a value that returns
+  to an earlier one (ABA) can hide a genuine conflict, and with no
+  `serverSeq` the ordering of pending events falls back to client clocks
+  that may be skewed. Closing those needs a per-event sync watermark, which
+  is deliberately deferred to the backend/sync design rather than invented
+  locally.
 - **Derived logic stays independent** — `relationshipResolver`,
   `groupProjection`, `rank`, `layout` and `graphAdapter` take plain record
   snapshots and know nothing about storage, events or sync. That is what
