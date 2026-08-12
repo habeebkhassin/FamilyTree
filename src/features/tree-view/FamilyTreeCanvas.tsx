@@ -5,7 +5,8 @@ import '@xyflow/react/dist/style.css'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
 import { buildFamilyGraph } from './graphAdapter'
 import { projectFamilyGroups } from './groupProjection'
-import { projectFamilyTreeView } from './viewProjection'
+import { emphasisFor, projectFamilyTreeView } from './viewProjection'
+import { styleEdgesForView } from './viewEmphasis'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
@@ -21,7 +22,7 @@ import { resolveRelationships } from '../../lib/relationships/relationshipResolv
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
 import { FocusBreadcrumb } from './FocusBreadcrumb'
 import { PersonInspector } from './PersonInspector'
-import type { FamilyEdge, FamilyNode } from './types'
+import type { FamilyNode } from './types'
 import './FamilyTreeCanvas.css'
 
 interface FamilyTreeCanvasProps {
@@ -198,30 +199,6 @@ function buildGenerationLabels(nodes: FamilyNode[]): GenerationLabelNode[] {
   }))
 }
 
-/**
- * A boundary edge stands for a relationship belonging to someone inside a
- * collapsed group, not to the group itself — so it is drawn in the same
- * vocabulary as the real edge it came from, just quieter. Deliberately no
- * label: Phase 4D removed per-instance edge text because it became noise,
- * and this would reintroduce exactly that.
- *
- * Routing is forced to smoothstep. A Union segment is normally a short
- * straight line between two partners standing side by side, but once one
- * of them is absorbed the other end can be most of the canvas away, and a
- * straight line across that distance reads as a long diagonal slash
- * through unrelated people. Orthogonal routing keeps it in the same
- * right-angled language as every other edge in the graph. This is a pure
- * rendering choice — React Flow's own edge type, no custom router — and
- * touches neither the relationship nor its rank.
- */
-function applyBoundaryEdgeStyle(edges: FamilyEdge[]): FamilyEdge[] {
-  return edges.map((edge) =>
-    edge.data?.boundary
-      ? { ...edge, type: 'smoothstep', style: { ...edge.style, opacity: 0.5 } }
-      : edge,
-  )
-}
-
 /** Centers the viewport on a single node when `focalPersonId` resolves to one currently on screen. Must render inside ReactFlowProvider. */
 function FocalPersonCenterer({ focalPersonId, nodes }: { focalPersonId?: string; nodes: FamilyNode[] }) {
   const { fitView } = useReactFlow()
@@ -371,7 +348,12 @@ export function FamilyTreeCanvas({
     }
   }, [projectedGraph])
 
-  const edges = useMemo(() => applyBoundaryEdgeStyle(projectedGraph.edges), [projectedGraph])
+  // Restyled per view, not per graph: emphasis changes when the viewpoint
+  // moves, while the edges themselves do not.
+  const edges = useMemo(
+    () => styleEdgesForView(projectedGraph.edges, viewGraph),
+    [projectedGraph, viewGraph],
+  )
 
   const generationLabels = useMemo(() => buildGenerationLabels(layoutedNodes), [layoutedNodes])
   const generationBands = useMemo(() => buildGenerationBands(layoutedNodes), [layoutedNodes])
@@ -390,23 +372,28 @@ export function FamilyTreeCanvas({
             data: { ...node.data, onToggle: () => onToggleFamilyGroup(node.data.familyGroup.id) },
           }
         }
-        if (node.type === 'person') {
-          const index = comparisonIds.indexOf(node.id)
+        if (node.type === 'person' || node.type === 'unionJunction') {
+          const index = node.type === 'person' ? comparisonIds.indexOf(node.id) : -1
           const isFocal = node.id === focalPersonId
-          if (index !== -1 || isFocal) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                ...(index !== -1 && { comparisonRole: index === 0 ? 'a' : 'b' }),
-                ...(isFocal && { isFocal: true }),
-              },
-            }
+          // Absent from the map means `primary`, which is what every node
+          // gets when nobody is focused — so an unfocused tree is drawn
+          // exactly as it always was.
+          const emphasis = emphasisFor(viewGraph, node.id)
+          if (index === -1 && !isFocal && emphasis === 'primary') return node
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...(index !== -1 && { comparisonRole: index === 0 ? 'a' : 'b' }),
+              ...(isFocal && { isFocal: true }),
+              ...(emphasis !== 'primary' && { emphasis }),
+            },
           }
         }
         return node
       }),
-    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId],
+    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph],
   )
 
   const groupHeaders = useMemo<Node[]>(

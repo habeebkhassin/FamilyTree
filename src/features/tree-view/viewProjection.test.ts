@@ -8,6 +8,8 @@ import { buildFamilyGraph } from './graphAdapter'
 import { computeRanks } from './rank'
 import { projectFamilyGroups } from './groupProjection'
 import { emphasisFor, projectFamilyTreeView } from './viewProjection'
+import { edgeEmphasis, styleEdgesForView } from './viewEmphasis'
+import type { FamilyEdge } from './types'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
 
 const TREE = 'tree-1'
@@ -346,5 +348,177 @@ test('16. the projection stays a graph, never an ordered sequence', () => {
   for (const node of view.nodes) {
     assert.equal('order' in node, false)
     assert.equal('index' in node, false)
+  }
+})
+
+// ── Visual hierarchy: emphasis by distance (Phase 5C-3) ──────────────
+// Emphasis changes how loudly a node is drawn. It must never change WHICH
+// nodes there are, what they are connected to, or what generation they
+// are in — the tests below assert exactly that alongside the tiering.
+
+test('17. with nobody focused, everyone is primary — the tree looks as it always did', () => {
+  const { graph } = sampleGraph()
+  const view = projectFamilyTreeView(graph, computeRanks(graph.nodes, graph.edges), FULL)
+
+  assert.equal(view.emphasis.size, 0)
+  for (const node of view.nodes) assert.equal(emphasisFor(view, node.id), 'primary')
+})
+
+test('18. close family reads at full strength, distant kin steps back', () => {
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+  const view = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'child' })
+
+  assert.equal(emphasisFor(view, 'child'), 'primary', 'the focal person')
+  assert.equal(emphasisFor(view, 'parent'), 'primary')
+  assert.equal(emphasisFor(view, 'parentPartner'), 'primary', 'the other parent')
+  assert.equal(emphasisFor(view, 'grand'), 'primary', 'a grandparent is still close family')
+  assert.equal(emphasisFor(view, 'outsider'), 'context', 'unconnected people recede')
+})
+
+test('19. a partner is one step away, so a couple reads as one unit', () => {
+  // Passing through the union junction is free. Were it not, a spouse
+  // would tier the same as a grandparent, which is plainly wrong.
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+  const view = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'parent' })
+
+  assert.equal(emphasisFor(view, 'parentPartner'), 'primary')
+  assert.equal(emphasisFor(view, 'junction:union-1'), 'primary', 'the bond itself is near too')
+})
+
+test('20. distance is measured from the focal person, so moving focus re-tiers', () => {
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+
+  const fromChild = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'child' })
+  const fromOutsider = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'outsider' })
+
+  assert.equal(emphasisFor(fromChild, 'grand'), 'primary')
+  assert.equal(emphasisFor(fromOutsider, 'grand'), 'context', 'from outside, the family recedes')
+  assert.equal(emphasisFor(fromOutsider, 'outsider'), 'primary')
+})
+
+test('21. emphasis never changes the nodes, the edges or the ranks', () => {
+  // The load-bearing guarantee of this phase.
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+  const plain = projectFamilyTreeView(graph, ranks, FULL)
+
+  for (const focus of ['child', 'grand', 'outsider', 'nobody-here']) {
+    const focused = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: focus })
+    assert.equal(focused.nodes, plain.nodes, `focus on ${focus} rebuilt the nodes`)
+    assert.equal(focused.edges, plain.edges, `focus on ${focus} rebuilt the edges`)
+    assert.equal(focused.ranks, ranks, `focus on ${focus} touched the ranks`)
+    assert.deepEqual(focused.hiddenNodeIds, plain.hiddenNodeIds, 'nobody is hidden by emphasis')
+  }
+})
+
+test('22. a focal person who is not in the graph leaves every tier alone', () => {
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+  const view = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'ghost' })
+
+  assert.equal(view.emphasis.size, 0, 'no tiering rather than everyone dimmed')
+})
+
+test('23. tiering is deterministic and independent of load order', () => {
+  const { people, parentLinks, unions } = sampleGraph()
+  const forwards = buildFamilyGraph(people, parentLinks, unions)
+  const backwards = buildFamilyGraph(
+    [...people].reverse(),
+    [...parentLinks].reverse(),
+    [...unions].reverse(),
+  )
+
+  const a = projectFamilyTreeView(forwards, computeRanks(forwards.nodes, forwards.edges), {
+    view: 'full',
+    focalPersonId: 'child',
+  })
+  const b = projectFamilyTreeView(backwards, computeRanks(backwards.nodes, backwards.edges), {
+    view: 'full',
+    focalPersonId: 'child',
+  })
+
+  for (const node of a.nodes) {
+    assert.equal(emphasisFor(a, node.id), emphasisFor(b, node.id), `${node.id} tiered differently`)
+  }
+})
+
+// ── Edge styling ─────────────────────────────────────────────────────
+
+test('24. a union bond is drawn heavier than a line of descent', () => {
+  // The two used to be indistinguishable in the common case — biological
+  // child, married couple — which is most of a real tree.
+  const { graph } = sampleGraph()
+  const view = projectFamilyTreeView(graph, computeRanks(graph.nodes, graph.edges), FULL)
+  const styled = styleEdgesForView(graph.edges, view)
+
+  const unionWidth = styled.find((edge) => edge.data?.kind === 'unionSegment')?.style?.strokeWidth
+  const descentWidth = styled.find((edge) => edge.data?.kind === 'parentChild')?.style?.strokeWidth
+  assert.ok(typeof unionWidth === 'number' && typeof descentWidth === 'number')
+  assert.ok(unionWidth > descentWidth, 'a couple bond reads as heavier than descent')
+})
+
+test('25. an edge is drawn at the strength of its quieter end', () => {
+  // Otherwise the focal person sprouts bright spokes into the background.
+  const { graph } = sampleGraph()
+  const ranks = computeRanks(graph.nodes, graph.edges)
+  const view = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'child' })
+
+  const near = styleEdgesForView(graph.edges, view).find((edge) => edge.id === 'link-2')
+  assert.ok(near, 'the parent -> child edge exists')
+  assert.equal(edgeEmphasis(near, view), 'primary')
+})
+
+test('26. styling preserves every edge, its id and its meaning', () => {
+  const { graph } = sampleGraph()
+  const view = projectFamilyTreeView(graph, computeRanks(graph.nodes, graph.edges), FULL)
+  const styled = styleEdgesForView(graph.edges, view)
+
+  assert.deepEqual(
+    styled.map((edge) => edge.id),
+    graph.edges.map((edge) => edge.id),
+  )
+  for (const edge of styled) {
+    const original = graph.edges.find((candidate) => candidate.id === edge.id)
+    assert.deepEqual(edge.data, original?.data, `${edge.id} kept its meaning`)
+    assert.equal(edge.source, original?.source)
+    assert.equal(edge.target, original?.target)
+  }
+  assert.notEqual(styled, graph.edges, 'and the originals were not mutated')
+  assert.equal(graph.edges[0]?.style?.strokeWidth, 1.5, 'the adapter output is untouched')
+})
+
+test('27. a collapsed-group boundary edge stays quieter than a real one', () => {
+  const { graph } = sampleGraph()
+  const view = projectFamilyTreeView(graph, computeRanks(graph.nodes, graph.edges), FULL)
+
+  const real = graph.edges.find((edge) => edge.data?.kind === 'parentChild')
+  const realData = real?.data
+  assert.ok(real && realData)
+
+  const boundary: FamilyEdge = { ...real, id: 'boundary-1', data: { ...realData, boundary: true } }
+  const [styledReal, styledBoundary] = styleEdgesForView([real, boundary], view)
+
+  assert.ok(
+    (styledBoundary?.style?.opacity as number) < (styledReal?.style?.opacity as number),
+    'a boundary edge stands for something inside a collapsed group, and says so quietly',
+  )
+  assert.equal(styledBoundary?.type, 'smoothstep', 'and keeps its orthogonal routing')
+})
+
+test('28. with nobody focused the tree is drawn exactly as it was before this phase', () => {
+  // The unfocused view is the one most users see most of the time, so the
+  // hierarchy must cost it nothing: same 1.5px descent lines, full opacity.
+  const { graph } = sampleGraph()
+  const view = projectFamilyTreeView(graph, computeRanks(graph.nodes, graph.edges), FULL)
+  const styled = styleEdgesForView(graph.edges, view)
+
+  for (const edge of styled) {
+    assert.equal(edge.style?.opacity, 1, edge.id + ' should be at full strength')
+    if (edge.data?.kind === 'parentChild') {
+      assert.equal(edge.style?.strokeWidth, 1.5, 'the width the adapter has always used')
+    }
   }
 })

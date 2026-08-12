@@ -25,9 +25,14 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   // not a property of it, so it is injected at render time and never
   // reaches the adapter, the ranking, or the layout.
   const isFocal = data.isFocal === true
+  // How loudly this card should read in the current view. Injected the
+  // same way, for the same reason: it is a property of the viewpoint, not
+  // of the person.
+  const emphasis = typeof data.emphasis === 'string' ? data.emphasis : 'primary'
 
   const classes = [
     'person-node',
+    `person-node--${emphasis}`,
     selected ? 'person-node--selected' : null,
     comparisonRole ? 'person-node--comparing' : null,
     isFocal ? 'person-node--focal' : null,

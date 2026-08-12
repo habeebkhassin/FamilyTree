@@ -34,16 +34,53 @@
 }
 
 /*
+  Visual hierarchy — Phase 5C-3.
+
+  Distance from the focal person, expressed as weight rather than colour.
+  Opacity only ever reduces; the card keeps its exact dimensions at every
+  tier, so nothing here can disturb a measurement in layout.ts. `primary`
+  is the default and deliberately identical to how every card looked
+  before this phase, which is what an unfocused tree still gets.
+*/
+.person-node--primary {
+  opacity: 1;
+}
+
+.person-node--secondary {
+  opacity: 0.78;
+}
+
+.person-node--context {
+  opacity: 0.55;
+}
+
+/* Hovering restores a quietened card, so nothing is ever hard to read
+   once you go looking for it. */
+.person-node--secondary:hover,
+.person-node--context:hover {
+  opacity: 1;
+}
+
+/*
   The current viewpoint. A halo rather than a bigger card: the eye finds
   it immediately while the node keeps its exact dimensions, so every
   measurement in layout.ts stays true and nothing about ranking or
   placement shifts when focus moves.
+
+  It reads as unmistakable mostly because everything around it has stepped
+  back — the ring does the last part of the work, not all of it.
 */
 .person-node--focal {
+  opacity: 1;
   border-color: var(--accent);
+  background: var(--surface-raised);
   box-shadow:
-    0 0 0 3px var(--accent-bg),
+    0 0 0 4px var(--accent-bg),
     var(--shadow-hover);
+}
+
+.person-node--focal .person-node__name {
+  font-weight: 600;
 }
 
 .person-node__sr-only {

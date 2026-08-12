@@ -16,3 +16,13 @@
     height: 13px;
   }
 }
+
+/* Fades with its family. The box size is untouched at every tier —
+   layout.ts measures this node, so only opacity may vary. */
+.union-junction--secondary {
+  opacity: 0.78;
+}
+
+.union-junction--context {
+  opacity: 0.55;
+}
