@@ -1,5 +1,6 @@
 import type { FamilyGraph } from './types'
 import type { ProjectedFamilyView, ViewEmphasis, ViewProjectionOptions } from './viewTypes'
+import { projectMyFamily } from './myFamilyView'
 
 /**
  * View projection — Phase 5C-2.
@@ -64,6 +65,7 @@ import type { ProjectedFamilyView, ViewEmphasis, ViewProjectionOptions } from '.
  */
 const NO_EMPHASIS: ReadonlyMap<string, ViewEmphasis> = new Map()
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
+const NO_FAMILY_UNITS: ReadonlyMap<string, string> = new Map()
 
 /**
  * How far from the focal person a node can be and still read at full
@@ -179,9 +181,16 @@ export function projectFamilyTreeView(
   ranks: ReadonlyMap<string, number>,
   options: ViewProjectionOptions,
 ): ProjectedFamilyView {
-  // `full` is the only implemented view, and ImplementedView keeps that
-  // honest at the type level rather than with a runtime branch that could
-  // silently return the wrong family. Later phases widen that union.
+  // ImplementedView keeps the set of buildable views honest at the type
+  // level rather than with a runtime fallback that could silently return
+  // the wrong family. Later phases widen that union as they build.
+  if (options.view === 'my-family') {
+    // Measured by generational displacement rather than hop count, which
+    // is what lets it tell a sibling from a grandparent — see
+    // myFamilyView.ts. It frames the family; it never re-ranks it.
+    return { view: options.view, ...projectMyFamily(graph, ranks, options.focalPersonId) }
+  }
+
   //
   // The focal person changes only how loudly each node is drawn — never
   // WHICH nodes there are. `nodes`, `edges` and `ranks` come back by
@@ -198,6 +207,7 @@ export function projectFamilyTreeView(
     ranks,
     emphasis,
     hiddenNodeIds: NOTHING_HIDDEN,
+    familyUnits: NO_FAMILY_UNITS,
   }
 }
 

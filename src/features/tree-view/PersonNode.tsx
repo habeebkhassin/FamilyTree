@@ -29,10 +29,15 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   // same way, for the same reason: it is a property of the viewpoint, not
   // of the person.
   const emphasis = typeof data.emphasis === 'string' ? data.emphasis : 'primary'
+  // Set when this person shares a household with the focal person. A quiet
+  // rail, not a container: it says "we live in the same family" without
+  // drawing a box around anyone.
+  const inFamilyUnit = typeof data.familyUnit === 'string'
 
   const classes = [
     'person-node',
     `person-node--${emphasis}`,
+    inFamilyUnit ? 'person-node--unit' : null,
     selected ? 'person-node--selected' : null,
     comparisonRole ? 'person-node--comparing' : null,
     isFocal ? 'person-node--focal' : null,

@@ -7,6 +7,8 @@ import { buildFamilyGraph } from './graphAdapter'
 import { projectFamilyGroups } from './groupProjection'
 import { emphasisFor, projectFamilyTreeView } from './viewProjection'
 import { styleEdgesForView } from './viewEmphasis'
+import { centreOnHousehold } from './focalCentering'
+import type { ImplementedView } from './viewTypes'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
@@ -243,6 +245,17 @@ export function FamilyTreeCanvas({
    * them saying so.
    */
   const [inspectedPersonId, setInspectedPersonId] = useState<string | null>(null)
+
+  /**
+   * Which view is on. Not persisted: a viewpoint is worth remembering,
+   * but which lens you last used is not, and reopening the tree in a
+   * narrowed frame you had forgotten choosing would be disorienting.
+   */
+  const [view, setView] = useState<ImplementedView>('full')
+  // My Family is measured from somebody; with nobody focused there is
+  // nothing to measure from, so the toggle is not offered.
+  const canUseMyFamily = Boolean(focalPersonId)
+  const activeView: ImplementedView = canUseMyFamily ? view : 'full'
   const baseGraph = useMemo(
     () => buildFamilyGraph(people, parentLinks, unions),
     [people, parentLinks, unions],
@@ -269,15 +282,15 @@ export function FamilyTreeCanvas({
    * nothing that reaches the layout.
    */
   const viewGraph = useMemo(
-    () => projectFamilyTreeView(baseGraph, genealogyRanks, { view: 'full', focalPersonId }),
-    [baseGraph, genealogyRanks, focalPersonId],
+    () => projectFamilyTreeView(baseGraph, genealogyRanks, { view: activeView, focalPersonId }),
+    [baseGraph, genealogyRanks, focalPersonId, activeView],
   )
 
   // Destructured deliberately. The full view ignores focalPersonId, so
   // these three are the same references whoever is focused — depending on
   // them rather than on `viewGraph` keeps a change of viewpoint from
   // re-running the group projection and re-laying out the whole tree.
-  const { nodes: viewNodes, edges: viewEdges, ranks: viewRanks } = viewGraph
+  const { nodes: viewNodes, edges: viewEdges, ranks: viewRanks, familyUnits } = viewGraph
 
   // The genealogy graph is built first and never altered; collapsing is a
   // pure projection layered on top of it, so toggling a group can only
@@ -340,13 +353,31 @@ export function FamilyTreeCanvas({
     setIsLayouting(true)
     layoutFamilyGraph(projectedGraph.nodes, projectedGraph.edges, projectedGraph.ranks).then((positioned) => {
       if (cancelled) return
-      setLayoutedNodes(positioned)
+      // A uniform translation, applied only in My Family: it puts the
+      // focal household at the origin so ancestors and descendants
+      // radiate from where you are standing. Every relative position
+      // layout.ts worked out survives untouched, and y is never altered,
+      // so generations keep meaning exactly what they meant.
+      setLayoutedNodes(
+        activeView === 'my-family'
+          ? centreOnHousehold(positioned, focalPersonId, familyUnits)
+          : positioned,
+      )
       setIsLayouting(false)
     })
     return () => {
       cancelled = true
     }
-  }, [projectedGraph])
+  }, [projectedGraph, activeView, focalPersonId, familyUnits])
+
+  // People this view does not reach. Counted against the real people
+  // rather than the hidden node count: a union junction is a drawing
+  // device, and counting those would tell someone their tree holds more
+  // people than it does.
+  const hiddenCount = useMemo(
+    () => [...viewGraph.hiddenNodeIds].filter((id) => peopleById.has(id)).length,
+    [viewGraph, peopleById],
+  )
 
   // Restyled per view, not per graph: emphasis changes when the viewpoint
   // moves, while the edges themselves do not.
@@ -379,7 +410,8 @@ export function FamilyTreeCanvas({
           // gets when nobody is focused — so an unfocused tree is drawn
           // exactly as it always was.
           const emphasis = emphasisFor(viewGraph, node.id)
-          if (index === -1 && !isFocal && emphasis === 'primary') return node
+          const familyUnit = familyUnits.get(node.id)
+          if (index === -1 && !isFocal && emphasis === 'primary' && !familyUnit) return node
 
           return {
             ...node,
@@ -388,12 +420,13 @@ export function FamilyTreeCanvas({
               ...(index !== -1 && { comparisonRole: index === 0 ? 'a' : 'b' }),
               ...(isFocal && { isFocal: true }),
               ...(emphasis !== 'primary' && { emphasis }),
+              ...(familyUnit && { familyUnit }),
             },
           }
         }
         return node
       }),
-    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph],
+    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph, familyUnits],
   )
 
   const groupHeaders = useMemo<Node[]>(
@@ -437,7 +470,42 @@ export function FamilyTreeCanvas({
           peopleById={peopleById}
           onBack={onFocusBack}
         />
+
+        {canUseMyFamily && (
+          <div className="tree-canvas__views" role="group" aria-label="Which view of the family">
+            {(['full', 'my-family'] as const).map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                className={
+                  activeView === candidate
+                    ? 'tree-canvas__view tree-canvas__view--on'
+                    : 'tree-canvas__view'
+                }
+                aria-pressed={activeView === candidate}
+                onClick={() => setView(candidate)}
+              >
+                {candidate === 'full' ? 'Everyone' : 'My family'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/*
+        Someone a generation outside the frame is further away, not
+        unrelated — so the view says so rather than letting the family
+        appear to end at its edge.
+      */}
+      {activeView === 'my-family' && hiddenCount > 0 && (
+        <p className="tree-canvas__beyond" role="status">
+          {hiddenCount} more {hiddenCount === 1 ? 'person' : 'people'} in this tree, further out than
+          this view reaches.{' '}
+          <button type="button" className="tree-canvas__beyond-action" onClick={() => setView('full')}>
+            Show everyone
+          </button>
+        </p>
+      )}
 
       {shouldPromptForFocus && (
         <p className="tree-canvas__focus-prompt">

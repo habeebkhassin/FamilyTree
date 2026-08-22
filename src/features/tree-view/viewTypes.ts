@@ -29,7 +29,7 @@ export type FamilyTreeView =
  * path that could silently return the wrong tree. Each later phase widens
  * this union by exactly the view it implements.
  */
-export type ImplementedView = Extract<FamilyTreeView, 'full'>
+export type ImplementedView = Extract<FamilyTreeView, 'full' | 'my-family'>
 
 /**
  * How prominently a node should read in this view.
@@ -88,7 +88,18 @@ export interface ProjectedFamilyView extends FamilyGraph {
    *
    * Recorded rather than merely omitted, so a view can honestly say "there
    * are more people here" instead of pretending the family ends where the
-   * frame does.
+   * frame does. Someone a generation outside the frame should read as
+   * further away, never as unrelated.
    */
   hiddenNodeIds: ReadonlySet<string>
+  /**
+   * Person id -> household id, for the households the focal person belongs
+   * to. Empty in the full view.
+   *
+   * A derived, render-time grouping used only to draw a quiet shared rail —
+   * never persisted, never a container, and emphatically NOT a FamilyGroup.
+   * Family Groups are explicit, user-defined and stored; these are worked
+   * out from the graph each time it is drawn.
+   */
+  familyUnits: ReadonlyMap<string, string>
 }

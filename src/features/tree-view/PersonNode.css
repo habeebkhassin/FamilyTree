@@ -157,3 +157,33 @@
     font-size: 11px;
   }
 }
+
+/*
+  Family-unit rail — Phase 5C-4.
+
+  Marks the people who share a household with the focal person: the family
+  they were born into, and the one they went on to make. A 3px rail down
+  the leading edge, drawn inside the card's existing padding so no
+  dimension changes and layout.ts's measurements stay true.
+
+  Deliberately quieter than the focal ring and quieter than the card's own
+  border on hover. It is a hint for the eye scanning for branches, not a
+  second hierarchy competing with emphasis — and it is a rail rather than a
+  background tint so light and dark themes behave identically.
+
+  This is NOT a Family Group. Those are explicit, user-defined and drawn as
+  labelled containers; this is derived at render time and never stored.
+*/
+.person-node--unit {
+  border-left-color: var(--accent);
+  box-shadow:
+    inset 2px 0 0 0 var(--accent),
+    var(--shadow);
+}
+
+.person-node--unit.person-node--focal {
+  /* The focal ring already says everything; the rail must not fight it. */
+  box-shadow:
+    0 0 0 4px var(--accent-bg),
+    var(--shadow-hover);
+}

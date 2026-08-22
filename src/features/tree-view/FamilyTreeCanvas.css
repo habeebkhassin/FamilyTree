@@ -321,3 +321,95 @@
     min-height: 44px;
   }
 }
+
+/*
+  The Full <-> My Family toggle. Two buttons, no dropdown: with exactly two
+  views a menu would be more chrome than choice. The final multi-view
+  selector replaces this once there are more views to select.
+*/
+.tree-canvas__views {
+  display: flex;
+  margin-left: auto;
+  padding: 2px;
+  gap: 2px;
+  background: var(--row-band);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.tree-canvas__view {
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tree-canvas__view:hover {
+  color: var(--text);
+}
+
+.tree-canvas__view:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tree-canvas__view--on {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.tree-canvas__beyond {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--row-band);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.tree-canvas__beyond-action {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.tree-canvas__beyond-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .tree-canvas__views {
+    margin-left: 0;
+  }
+
+  .tree-canvas__view {
+    min-height: 44px;
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .tree-canvas__beyond {
+    font-size: 12px;
+  }
+
+  .tree-canvas__beyond-action {
+    min-height: 44px;
+  }
+}
