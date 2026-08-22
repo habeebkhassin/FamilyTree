@@ -23,6 +23,15 @@
   opacity: 0.78;
 }
 
+/* Matched to the person tiers, so a couple's bond never fades further
+   than the two people it joins. See PersonNode.css for why the value
+   differs by theme. */
 .union-junction--context {
-  opacity: 0.55;
+  opacity: 0.66;
+}
+
+@media (prefers-color-scheme: dark) {
+  .union-junction--context {
+    opacity: 0.55;
+  }
 }

@@ -324,7 +324,35 @@ test('19. the focal person belongs to the family they came from and the one they
   }
 })
 
-test('20. a person is only ever in one unit, and unit ids are stable', () => {
+test('20. someone with children but no union and no recorded parents still heads a household', () => {
+  // The root of a tree is the common case: no parents recorded above them
+  // and no marriage recorded beside them, yet they plainly head a family.
+  // Anchoring only on unions and parents left them with no rail at all.
+  const graph = buildFamilyGraph(
+    ['root', 'childA', 'childB'].map(person),
+    [link('l1', 'root', 'childA'), link('l2', 'root', 'childB')],
+    [],
+  )
+  const units = focalHouseholds(graph, 'root')
+
+  assert.ok(units.has('root'), 'the head of the household is in it')
+  assert.ok(units.has('childA'))
+  assert.ok(units.has('childB'))
+  assert.equal(new Set(units.values()).size, 1, 'one household, not one per child')
+})
+
+test('21. a partnered person gains no extra household from the same children', () => {
+  // Children of a couple route through the union junction, so the junction
+  // already anchors them — the person must not anchor a second, duplicate
+  // household around the same family.
+  const { graph } = family()
+  const units = focalHouseholds(graph, 'me')
+
+  assert.equal(new Set(units.values()).size, 2, 'born into one, made one')
+  assert.equal(units.get('kid'), units.get('spouse'), 'my child and my partner share my household')
+})
+
+test('22. a person is only ever in one unit, and unit ids are stable', () => {
   const { graph } = family()
   const units = focalHouseholds(graph, 'me')
 
@@ -333,14 +361,14 @@ test('20. a person is only ever in one unit, and unit ids are stable', () => {
   assert.deepEqual([...units], [...focalHouseholds(graph, 'me')], 'and it is deterministic')
 })
 
-test('21. no junction is ever a member of a household', () => {
+test('23. no junction is ever a member of a household', () => {
   const { graph } = family()
   for (const id of focalHouseholds(graph, 'me').keys()) {
     assert.ok(!id.startsWith('junction:'), 'a junction is a drawing device, not a person')
   }
 })
 
-test('22. multiple unions each contribute a household', () => {
+test('24. multiple unions each contribute a household', () => {
   const people = ['me', 'first', 'second', 'childA', 'childB'].map(person)
   const graph = buildFamilyGraph(
     people,
@@ -357,7 +385,7 @@ test('22. multiple unions each contribute a household', () => {
 
 // ── Composition with the rest of the pipeline ────────────────────────
 
-test('23. family groups still project on top of My Family', () => {
+test('25. family groups still project on top of My Family', () => {
   const { graph, ranks } = family()
   const view = projectMyFamily(graph, ranks, 'me')
   const groups = [group('g1'), group('g2')]
@@ -390,7 +418,7 @@ test('23. family groups still project on top of My Family', () => {
   }
 })
 
-test('24. a collapsed group stays a collapsed group, not an automatic family unit', () => {
+test('26. a collapsed group stays a collapsed group, not an automatic family unit', () => {
   const { graph, ranks } = family()
   const view = projectMyFamily(graph, ranks, 'me')
 
@@ -402,7 +430,7 @@ test('24. a collapsed group stays a collapsed group, not an automatic family uni
   }
 })
 
-test('25. the full view is unaffected by any of this', () => {
+test('27. the full view is unaffected by any of this', () => {
   const { graph, ranks } = family()
   const full = projectFamilyTreeView(graph, ranks, { view: 'full', focalPersonId: 'me' })
 
@@ -415,7 +443,7 @@ test('25. the full view is unaffected by any of this', () => {
 
 // ── Centring ─────────────────────────────────────────────────────────
 
-test('26. centring moves the household to the origin without rearranging anything', () => {
+test('28. centring moves the household to the origin without rearranging anything', () => {
   const { graph, ranks } = family()
   const view = projectMyFamily(graph, ranks, 'me')
   const laidOut = view.nodes.map((node, index) => ({
@@ -440,7 +468,7 @@ test('26. centring moves the household to the origin without rearranging anythin
   }
 })
 
-test('27. centring is a no-op without a focal person', () => {
+test('29. centring is a no-op without a focal person', () => {
   const { graph, ranks } = family()
   const view = projectMyFamily(graph, ranks, 'me')
   const laidOut = view.nodes.map((node) => ({ ...node, position: { x: 40, y: 0 } }))

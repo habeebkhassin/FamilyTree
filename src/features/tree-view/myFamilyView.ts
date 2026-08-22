@@ -202,6 +202,14 @@ export function focalHouseholds(
     ...(up.get(focalPersonId) ?? []),
   ])
 
+  // And the person themselves, when children hang directly off them
+  // rather than off a union junction. Without this, someone with children
+  // but no recorded union and no recorded parents — the root of a tree is
+  // the common case — anchors nothing and gets no rail at all, despite
+  // plainly heading a household. A child whose parents share a union
+  // routes through that junction instead, so this adds nothing there.
+  if ((down.get(focalPersonId) ?? []).length > 0) anchors.add(focalPersonId)
+
   for (const anchor of [...anchors].sort()) {
     const unitId = `unit:${anchor}`
     // The partners either side of the anchor, then everyone below it.

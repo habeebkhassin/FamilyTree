@@ -50,8 +50,27 @@
   opacity: 0.78;
 }
 
+/*
+  Held to a readable floor per theme rather than by one number.
+
+  The same opacity does not buy the same contrast on both grounds: dark
+  text fading toward a light background loses contrast far faster than
+  light text fading toward a dark one. At 0.55 the context tier measures
+  about 5.4:1 on dark but only 3.5:1 on light — below the 4.5:1 the tier
+  system is supposed to hold everywhere. So light gets the higher value
+  and dark keeps the lower one, which lands both above the floor while
+  leaving the tiers just as distinguishable in each theme.
+
+  No new colour is involved; only how far each tier fades.
+*/
 .person-node--context {
-  opacity: 0.55;
+  opacity: 0.66;
+}
+
+@media (prefers-color-scheme: dark) {
+  .person-node--context {
+    opacity: 0.55;
+  }
 }
 
 /* Hovering restores a quietened card, so nothing is ever hard to read
