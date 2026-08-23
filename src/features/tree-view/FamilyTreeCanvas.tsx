@@ -209,8 +209,26 @@ function buildGenerationLabels(nodes: FamilyNode[]): GenerationLabelNode[] {
   }))
 }
 
-/** Centers the viewport on a single node when `focalPersonId` resolves to one currently on screen. Must render inside ReactFlowProvider. */
-function FocalPersonCenterer({ focalPersonId, nodes }: { focalPersonId?: string; nodes: FamilyNode[] }) {
+/**
+ * Frames the viewport around the focal person when they are on screen.
+ * Must render inside ReactFlowProvider.
+ *
+ * `framingIds` is what the camera should try to fit, always including the
+ * focal person. Centring on the focal person alone is right for a view
+ * that reaches equally in every direction, and wrong for one that does
+ * not: Lineage and Descendants extend almost entirely upward or downward,
+ * so half the viewport was being spent on empty canvas while the content
+ * ran off the opposite edge. See `framingIds` at the call site.
+ */
+function FocalPersonCenterer({
+  focalPersonId,
+  framingIds,
+  nodes,
+}: {
+  focalPersonId?: string
+  framingIds: readonly string[]
+  nodes: FamilyNode[]
+}) {
   const { fitView } = useReactFlow()
 
   useEffect(() => {
@@ -222,8 +240,14 @@ function FocalPersonCenterer({ focalPersonId, nodes }: { focalPersonId?: string;
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-    fitView({ nodes: [{ id: focalPersonId }], duration: prefersReducedMotion ? 0 : 300, maxZoom: 1.1 })
-  }, [focalPersonId, nodes, fitView])
+    // maxZoom is unchanged, so a small frame never blows a lone person up
+    // larger than they have ever been drawn.
+    fitView({
+      nodes: framingIds.map((id) => ({ id })),
+      duration: prefersReducedMotion ? 0 : 300,
+      maxZoom: 1.1,
+    })
+  }, [focalPersonId, framingIds, nodes, fitView])
 
   return null
 }
@@ -377,6 +401,44 @@ export function FamilyTreeCanvas({
       cancelled = true
     }
   }, [projectedGraph, activeView, focalPersonId, familyUnits])
+
+  /**
+   * What the camera should try to fit on first paint, and whenever the
+   * viewpoint or view changes.
+   *
+   * Everyone and My Family reach in every direction from the focal
+   * person, so centring on them alone is already balanced and is left
+   * exactly as it was. Lineage and Descendants do not: their content sits
+   * almost entirely above or below, so centring spent half the viewport on
+   * empty canvas and pushed the answer off the opposite edge — on a
+   * fifty-person tree Descendants showed five people of thirty-eight.
+   *
+   * The frame is the view's own PRIMARY tier, which the projection has
+   * already worked out: the focal person and their parents in Lineage,
+   * the focal person and their children in Descendants. So the camera asks
+   * the view what it is about rather than deciding for itself, and no
+   * genealogy is re-derived here.
+   *
+   * Only the primary tier, deliberately. Reaching one tier further looked
+   * better on a small family and fell apart on a large one: a generation
+   * of a dozen people is wide, and fitting that width drove the zoom down
+   * to the point where names truncated to initials and the focal person
+   * became a small box in a corner. A frame that shows everything at a
+   * size nobody can read has answered the wrong question. Later
+   * generations stay off the initial frame on purpose; they are still
+   * there to pan to, and the hidden-count notice already says the family
+   * continues.
+   */
+  const framingIds = useMemo<readonly string[]>(() => {
+    if (!focalPersonId) return []
+    if (activeView !== 'lineage' && activeView !== 'descendants') return [focalPersonId]
+    const framed = layoutedNodes
+      .filter((node) => node.type === 'person' && emphasisFor(viewGraph, node.id) === 'primary')
+      .map((node) => node.id)
+    // The focal person anchors the frame even if a collapsed group has
+    // taken every relative off the canvas.
+    return framed.includes(focalPersonId) ? framed : [focalPersonId, ...framed]
+  }, [focalPersonId, activeView, layoutedNodes, viewGraph])
 
   // People this view does not reach. Counted against the real people
   // rather than the hidden node count: a union junction is a drawing
@@ -564,7 +626,11 @@ export function FamilyTreeCanvas({
                   />
                 </Panel>
               )}
-              <FocalPersonCenterer focalPersonId={focalPersonId} nodes={layoutedNodes} />
+              <FocalPersonCenterer
+                focalPersonId={focalPersonId}
+                framingIds={framingIds}
+                nodes={layoutedNodes}
+              />
             </ReactFlow>
           </ReactFlowProvider>
         )}

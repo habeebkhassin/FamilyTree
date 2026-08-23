@@ -395,14 +395,32 @@
 }
 
 @media (max-width: 480px) {
+  /*
+    Four views need about 285px, which is the whole width of a small
+    phone. Sharing a row with the viewpoint left the focal person's name
+    with 0px at 320px and an ellipsis as far up as 390px — the one thing
+    on that row a reader actually needs. So the header wraps and the
+    selector takes the row below it, which is the only extra row on the
+    screen and only ever appears when the width genuinely demands it.
+  */
+  .tree-canvas__header {
+    flex-wrap: wrap;
+  }
+
   .tree-canvas__views {
     margin-left: 0;
+    flex-basis: 100%;
   }
 
   .tree-canvas__view {
+    /* Equal shares of the row, so the four read as one segmented control
+       rather than four buttons of accidental widths. */
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 44px;
-    padding: 4px 10px;
+    padding: 4px 6px;
     font-size: 11px;
+    text-align: center;
   }
 
   .tree-canvas__beyond {
