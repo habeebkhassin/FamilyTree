@@ -1,4 +1,4 @@
-import type { ParentRelationship } from '../../types'
+import { isAncestralParentLink } from '../../lib/relationships/relationshipSemantics'
 import type { FamilyEdge, FamilyGraph, FamilyNode } from './types'
 import type { ProjectedFamilyView, ViewEmphasis } from './viewTypes'
 
@@ -23,20 +23,17 @@ import type { ProjectedFamilyView, ViewEmphasis } from './viewTypes'
  * mother into a plain great-grandmother, which is a claim the records do not
  * support.
  *
- * That rule already exists — relationshipResolver.ts applies exactly this set
- * when it measures lineage distance. It is restated here rather than imported
- * because it is not exported from that module, and this phase may not change
- * it. The two must stay in step; see the phase report on giving the rule a
- * single home.
+ * The rule is not defined here. It lives in
+ * lib/relationships/relationshipSemantics.ts, which the relationship
+ * resolver measures lineage distance along too, so the two cannot drift
+ * apart about who counts as a forebear. My Family deliberately asks a
+ * different question of the same links — see that module.
  *
  * The walk reads `parentId` off the edge rather than following the edge's
  * source, so routing is irrelevant: a ParentLink whose two parents share a
  * union is drawn from their junction, but the recorded parent is still named
  * on the edge. No genealogy is re-derived here.
  */
-
-/** Mirrors LINEAGE_SUBTYPES in relationshipResolver.ts. Keep the two in step. */
-const LINEAGE_SUBTYPES: ReadonlySet<ParentRelationship> = new Set(['biological', 'adopted'])
 
 /**
  * Generations up at which a forebear stops reading at full strength, and
@@ -68,7 +65,7 @@ export function ancestorsOf(graph: FamilyGraph, focalPersonId: string): Map<stri
   for (const edge of graph.edges) {
     const data = edge.data
     if (data?.kind !== 'parentChild') continue
-    if (!LINEAGE_SUBTYPES.has(data.relationship)) continue
+    if (!isAncestralParentLink(data.relationship)) continue
     const list = parentsOf.get(data.childId)
     if (list) list.push(data.parentId)
     else parentsOf.set(data.childId, [data.parentId])

@@ -1,3 +1,4 @@
+import { ANCESTRAL_PARENT_LINKS } from './relationshipSemantics'
 import type { ParentLink, Person, Union } from '../../types'
 import type {
   LineageDistance,
@@ -154,7 +155,9 @@ function parentIdsOf(personId: string, index: GraphIndex): string[] {
  * "grandmother", which is exactly the kind of confident-but-wrong label
  * this engine is supposed to avoid.
  */
-const LINEAGE_SUBTYPES: ReadonlySet<ParentLink['relationship']> = new Set(['biological', 'adopted'])
+// The rule lives in relationshipSemantics.ts so the resolver and the views
+// cannot drift apart about who counts as a forebear.
+const LINEAGE_SUBTYPES = ANCESTRAL_PARENT_LINKS
 
 function lineageParentIdsOf(personId: string, index: GraphIndex): string[] {
   return (index.parentLinksByChild.get(personId) ?? [])

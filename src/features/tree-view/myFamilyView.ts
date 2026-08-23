@@ -1,3 +1,4 @@
+import { isProximityParentLink } from '../../lib/relationships/relationshipSemantics'
 import type { FamilyEdge, FamilyGraph, FamilyNode } from './types'
 import type { ProjectedFamilyView, ViewEmphasis } from './viewTypes'
 
@@ -36,6 +37,13 @@ import type { ProjectedFamilyView, ViewEmphasis } from './viewTypes'
  * it never concludes "this is an aunt". Naming relationships remains
  * relationshipResolver's job and this module must not grow a second
  * opinion about it.
+ *
+ * It also measures PROXIMITY rather than ancestry, and the difference is
+ * deliberate. Every parent link is walked, step and foster alongside
+ * biological and adoptive, so a step-parent sits one generation up and
+ * reads as close family. Lineage asks a different question and excludes
+ * exactly those links. Both are correct; the categories are set out in
+ * lib/relationships/relationshipSemantics.ts.
  *
  * A useful property falls out of it: a sibling is (1,1) whether or not
  * their shared parents have a recorded Union. Under hop counting those two
@@ -103,6 +111,13 @@ function buildDirectedAdjacency(edges: readonly FamilyEdge[]): DirectedAdjacency
 
   for (const edge of edges) {
     if (edge.data?.kind === 'parentChild') {
+      // PROXIMITY, not ancestry. Every parent link counts here, step and
+      // foster included, which is why My Family and Lineage can disagree
+      // about the same person and both be right: a step-parent who raised
+      // you is close family, and is still not somebody you descend from.
+      // The set is named rather than left implicit so this is visibly a
+      // choice — see lib/relationships/relationshipSemantics.ts.
+      if (!isProximityParentLink(edge.data.relationship)) continue
       // The source is the parent, or the junction standing in for both
       // parents — either way it is one generation above the target.
       push(up, edge.target, edge.source)
