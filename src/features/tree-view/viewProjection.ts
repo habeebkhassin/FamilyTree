@@ -1,6 +1,7 @@
 import type { FamilyGraph } from './types'
 import type { ProjectedFamilyView, ViewEmphasis, ViewProjectionOptions } from './viewTypes'
 import { projectMyFamily } from './myFamilyView'
+import { projectLineage } from './lineageView'
 
 /**
  * View projection — Phase 5C-2.
@@ -184,6 +185,13 @@ export function projectFamilyTreeView(
   // ImplementedView keeps the set of buildable views honest at the type
   // level rather than with a runtime fallback that could silently return
   // the wrong family. Later phases widen that union as they build.
+  if (options.view === 'lineage') {
+    // Ancestors only, by the same biological-and-adoptive rule the
+    // relationship resolver uses — see lineageView.ts. It frames the line
+    // of descent; it never re-ranks it.
+    return { view: options.view, ...projectLineage(graph, ranks, options.focalPersonId) }
+  }
+
   if (options.view === 'my-family') {
     // Measured by generational displacement rather than hop count, which
     // is what lets it tell a sibling from a grandparent — see

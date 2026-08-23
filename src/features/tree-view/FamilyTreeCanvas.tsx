@@ -68,6 +68,13 @@ const NODE_TYPES = {
   generationBand: GenerationBand,
 }
 
+/** Short enough that three of them still read as one small control. */
+const VIEW_LABELS: Record<ImplementedView, string> = {
+  full: 'Everyone',
+  'my-family': 'My family',
+  lineage: 'Lineage',
+}
+
 const GENERATION_LABEL_WIDTH = 64
 const GENERATION_LABEL_GAP = 16
 const BAND_SIDE_PADDING = 24
@@ -473,7 +480,7 @@ export function FamilyTreeCanvas({
 
         {canUseMyFamily && (
           <div className="tree-canvas__views" role="group" aria-label="Which view of the family">
-            {(['full', 'my-family'] as const).map((candidate) => (
+            {(['full', 'my-family', 'lineage'] as const).map((candidate) => (
               <button
                 key={candidate}
                 type="button"
@@ -485,7 +492,7 @@ export function FamilyTreeCanvas({
                 aria-pressed={activeView === candidate}
                 onClick={() => setView(candidate)}
               >
-                {candidate === 'full' ? 'Everyone' : 'My family'}
+                {VIEW_LABELS[candidate]}
               </button>
             ))}
           </div>
@@ -493,14 +500,15 @@ export function FamilyTreeCanvas({
       </div>
 
       {/*
-        Someone a generation outside the frame is further away, not
-        unrelated — so the view says so rather than letting the family
-        appear to end at its edge.
+        A framed view must never let the family appear to end at its edge.
+        The wording stays neutral about WHY somebody is absent: in Lineage
+        most of those hidden are not distant forebears at all but siblings,
+        cousins and children, and calling them "further out" would describe
+        them wrongly.
       */}
-      {activeView === 'my-family' && hiddenCount > 0 && (
+      {activeView !== 'full' && hiddenCount > 0 && (
         <p className="tree-canvas__beyond" role="status">
-          {hiddenCount} more {hiddenCount === 1 ? 'person' : 'people'} in this tree, further out than
-          this view reaches.{' '}
+          {hiddenCount} other {hiddenCount === 1 ? 'person is' : 'people are'} outside this view.{' '}
           <button type="button" className="tree-canvas__beyond-action" onClick={() => setView('full')}>
             Show everyone
           </button>
