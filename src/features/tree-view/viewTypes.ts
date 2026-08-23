@@ -29,7 +29,10 @@ export type FamilyTreeView =
  * path that could silently return the wrong tree. Each later phase widens
  * this union by exactly the view it implements.
  */
-export type ImplementedView = Extract<FamilyTreeView, 'full' | 'my-family' | 'lineage'>
+export type ImplementedView = Extract<
+  FamilyTreeView,
+  'full' | 'my-family' | 'lineage' | 'descendants'
+>
 
 /**
  * How prominently a node should read in this view.

@@ -68,11 +68,12 @@ const NODE_TYPES = {
   generationBand: GenerationBand,
 }
 
-/** Short enough that three of them still read as one small control. */
+/** Short enough that four of them still read as one small control. */
 const VIEW_LABELS: Record<ImplementedView, string> = {
   full: 'Everyone',
   'my-family': 'My family',
   lineage: 'Lineage',
+  descendants: 'Descendants',
 }
 
 const GENERATION_LABEL_WIDTH = 64
@@ -480,7 +481,7 @@ export function FamilyTreeCanvas({
 
         {canUseMyFamily && (
           <div className="tree-canvas__views" role="group" aria-label="Which view of the family">
-            {(['full', 'my-family', 'lineage'] as const).map((candidate) => (
+            {(['full', 'my-family', 'lineage', 'descendants'] as const).map((candidate) => (
               <button
                 key={candidate}
                 type="button"

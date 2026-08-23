@@ -2,6 +2,7 @@ import type { FamilyGraph } from './types'
 import type { ProjectedFamilyView, ViewEmphasis, ViewProjectionOptions } from './viewTypes'
 import { projectMyFamily } from './myFamilyView'
 import { projectLineage } from './lineageView'
+import { projectDescendants } from './descendantsView'
 
 /**
  * View projection — Phase 5C-2.
@@ -190,6 +191,13 @@ export function projectFamilyTreeView(
     // relationship resolver uses — see lineageView.ts. It frames the line
     // of descent; it never re-ranks it.
     return { view: options.view, ...projectLineage(graph, ranks, options.focalPersonId) }
+  }
+
+  if (options.view === 'descendants') {
+    // Lineage walked the other way: the same biological-and-adoptive rule
+    // applied downward — see descendantsView.ts. It frames the line of
+    // descent; it never re-ranks it.
+    return { view: options.view, ...projectDescendants(graph, ranks, options.focalPersonId) }
   }
 
   if (options.view === 'my-family') {
