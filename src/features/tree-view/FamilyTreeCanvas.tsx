@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Background, Controls, Panel, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { Background, Controls, Panel, ReactFlow, ReactFlowProvider, useReactFlow, useStore } from '@xyflow/react'
 import type { Node, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
@@ -75,6 +75,31 @@ const VIEW_LABELS: Record<ImplementedView, string> = {
   lineage: 'Lineage',
   descendants: 'Descendants',
 }
+
+/**
+ * How small a person's card may be drawn in the Everyone overview, in real
+ * screen pixels — Phase 5C-13.
+ *
+ * Everyone is meant to read as the whole map, and centring on one person
+ * at full size showed thirteen people of fifty. Fitting the entire graph
+ * instead is worse than useless: a fifty-person family is 3281px wide, so
+ * it lands at scale 0.42, where a card is 68px and a name needing 119px
+ * has nowhere to go.
+ *
+ * The limit is stated as a card width rather than a zoom because that is
+ * the thing that actually has to stay legible, and because a phone card is
+ * already narrower than a desktop one — one zoom number would mean two
+ * different reading experiences. Below roughly this width the view stops
+ * being an overview of anything and becomes a diagram of boxes.
+ */
+const OVERVIEW_MIN_CARD_PX = 112
+
+/**
+ * Breathing room around the overview frame, as fitView understands it.
+ * Folded back into the window size below so the frame still lands at the
+ * card width above rather than a little under it.
+ */
+const OVERVIEW_PADDING = 0.02
 
 const GENERATION_LABEL_WIDTH = 64
 const GENERATION_LABEL_GAP = 16
@@ -223,13 +248,63 @@ function buildGenerationLabels(nodes: FamilyNode[]): GenerationLabelNode[] {
 function FocalPersonCenterer({
   focalPersonId,
   framingIds,
+  overview,
   nodes,
 }: {
   focalPersonId?: string
   framingIds: readonly string[]
+  /** Everyone only: widen the frame to as much family as stays readable. */
+  overview: boolean
   nodes: FamilyNode[]
 }) {
   const { fitView } = useReactFlow()
+  // The pane's own width, which only something inside the provider can
+  // know. It is what decides how much family fits at the readable floor.
+  const paneWidth = useStore((state) => state.width)
+
+  /**
+   * The overview frame: everyone within the widest window that still
+   * leaves a card readable, centred on the focal person.
+   *
+   * Centred on the person rather than on the graph, and that is the whole
+   * reason this is a node set instead of a `minZoom` option. Handing
+   * fitView a zoom floor and the whole graph makes it centre the GRAPH,
+   * which puts somebody at the edge of a five-generation family off screen
+   * entirely. Choosing the nodes keeps the focal person in the middle of
+   * whatever is shown, and still goes through the single fitView call
+   * every other view uses.
+   *
+   * When the family is small enough to fit inside the window, this selects
+   * all of it and the result is an ordinary fit of the whole graph.
+   */
+  const overviewIds = useMemo<readonly string[] | null>(() => {
+    if (!overview || !focalPersonId || paneWidth <= 0) return null
+    const focal = nodes.find((node) => node.id === focalPersonId)
+    if (!focal) return null
+
+    // The card's own CSS width, taken from the node the layout measured
+    // rather than assumed, so the phone breakpoint is accounted for
+    // without this needing to know the breakpoint exists.
+    const cardWidth = nodeWidth(focal)
+    const minZoom = OVERVIEW_MIN_CARD_PX / cardWidth
+    const usableWidth = paneWidth * (1 - 2 * OVERVIEW_PADDING)
+    // The frame's bounding box runs from the left edge of the leftmost
+    // card to the right edge of the rightmost, so it is one whole card
+    // wider than the span between their centres. Measuring from centres
+    // without allowing for that made every frame a card too wide, and the
+    // zoom that much too low.
+    const windowWidth = usableWidth / minZoom
+    const halfWindow = Math.max(0, (windowWidth - cardWidth) / 2)
+
+    const focalCentre = focal.position.x + cardWidth / 2
+    const framed = nodes
+      .filter((node) => {
+        if (node.type !== 'person') return false
+        return Math.abs(node.position.x + nodeWidth(node) / 2 - focalCentre) <= halfWindow
+      })
+      .map((node) => node.id)
+    return framed.includes(focalPersonId) ? framed : [focalPersonId, ...framed]
+  }, [overview, focalPersonId, paneWidth, nodes])
 
   useEffect(() => {
     if (!focalPersonId) return
@@ -243,11 +318,12 @@ function FocalPersonCenterer({
     // maxZoom is unchanged, so a small frame never blows a lone person up
     // larger than they have ever been drawn.
     fitView({
-      nodes: framingIds.map((id) => ({ id })),
+      nodes: (overviewIds ?? framingIds).map((id) => ({ id })),
       duration: prefersReducedMotion ? 0 : 300,
       maxZoom: 1.1,
+      ...(overviewIds ? { padding: OVERVIEW_PADDING } : {}),
     })
-  }, [focalPersonId, framingIds, nodes, fitView])
+  }, [focalPersonId, framingIds, overviewIds, nodes, fitView])
 
   return null
 }
@@ -406,12 +482,17 @@ export function FamilyTreeCanvas({
    * What the camera should try to fit on first paint, and whenever the
    * viewpoint or view changes.
    *
-   * Everyone and My Family reach in every direction from the focal
-   * person, so centring on them alone is already balanced and is left
-   * exactly as it was. Lineage and Descendants do not: their content sits
-   * almost entirely above or below, so centring spent half the viewport on
-   * empty canvas and pushed the answer off the opposite edge — on a
-   * fifty-person tree Descendants showed five people of thirty-eight.
+   * My Family reaches in every direction from the focal person and is
+   * already bounded to a few generations around them, so centring is the
+   * whole answer and it is left exactly as it was. Lineage and Descendants
+   * are not: their content sits almost entirely above or below, so
+   * centring spent half the viewport on empty canvas and pushed the answer
+   * off the opposite edge — on a fifty-person tree Descendants showed five
+   * people of thirty-eight.
+   *
+   * Everyone is handled by the camera itself, which is the only place that
+   * knows how wide the pane is — see `overviewIds` in
+   * FocalPersonCenterer.
    *
    * The frame is the view's own PRIMARY tier, which the projection has
    * already worked out: the focal person and their parents in Lineage,
@@ -629,6 +710,7 @@ export function FamilyTreeCanvas({
               <FocalPersonCenterer
                 focalPersonId={focalPersonId}
                 framingIds={framingIds}
+                overview={activeView === 'full'}
                 nodes={layoutedNodes}
               />
             </ReactFlow>
