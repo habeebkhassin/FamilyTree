@@ -53,7 +53,25 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
         {/* The ring is a shape, not only a colour — and this says the same
             thing to a screen reader, which perceives neither. */}
         {isFocal && <span className="person-node__sr-only">Currently viewing from</span>}
-        <span className="person-node__name">{fullName}</span>
+        {/*
+          Two lines, because the card cannot get any wider. The name slot
+          is 84px; on a family that shares a surname, 42 of 50 full names
+          were ellipsised while every FIRST name fitted with room to spare.
+          Widening the card was measured and rejected — it is what sets a
+          couple block's width, so it widens every sibling fan-out and made
+          long parent-child edges worse, not better.
+
+          The given name leads because it is what distinguishes one person
+          from another on this canvas; the family name sits under it,
+          quieter, because in a family tree it is usually the part everyone
+          shares. Both are still shown in full wherever they fit.
+        */}
+        <span className="person-node__name" title={fullName}>
+          {person.firstName}
+        </span>
+        {person.lastName && (
+          <span className="person-node__surname">{person.lastName}</span>
+        )}
         {years && <span className="person-node__years">{years}</span>}
         {person.isPlaceholder && <span className="person-node__placeholder">Placeholder</span>}
       </div>

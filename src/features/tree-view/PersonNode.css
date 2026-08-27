@@ -5,7 +5,14 @@
   align-items: center;
   gap: 10px;
   width: 160px;
-  min-height: 72px;
+  /*
+    Pinned, not a minimum. layout.ts already treats every person as
+    exactly 72px tall when it places rows and derives the generation
+    bands, so a card that could grow with its content was free to drift
+    out of step with the geometry around it. Fixing the height makes the
+    stylesheet state the contract the layout has always assumed.
+  */
+  height: 72px;
   padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -134,14 +141,41 @@
 .person-node__info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  gap: 1px;
   min-width: 0;
+  /*
+    The card's height is fixed, so the text block must never be the thing
+    that pushes against it. Line heights below are chosen so the worst
+    case — given name, family name and years together — comes to 48px
+    inside the 50px of content the card has, and this is the backstop if a
+    future line is ever added.
+  */
+  max-height: 50px;
+  overflow: hidden;
 }
 
 .person-node__name {
   font-family: var(--font-heading);
   font-size: 14px;
+  line-height: 18px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+  The family name, under the given name and deliberately quieter.
+
+  Same secondary colour the years already use — no new colour enters the
+  system for this. It reads as the supporting half of one name rather than
+  as a second field.
+*/
+.person-node__surname {
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -149,6 +183,7 @@
 
 .person-node__years {
   font-size: 12px;
+  line-height: 15px;
   color: var(--text-secondary);
 }
 
@@ -163,17 +198,31 @@
 @media (max-width: 480px) {
   .person-node {
     width: 148px;
-    min-height: 64px;
+    /* Pinned for the same reason as the desktop card, and to the same
+       64px it has always rendered at on a phone. */
+    height: 64px;
     padding: 8px 10px;
     gap: 8px;
   }
 
+  .person-node__info {
+    /* 64px card, less 16px padding and 2px border. */
+    max-height: 46px;
+  }
+
   .person-node__name {
     font-size: 13px;
+    line-height: 16px;
+  }
+
+  .person-node__surname {
+    font-size: 11px;
+    line-height: 13px;
   }
 
   .person-node__years {
     font-size: 11px;
+    line-height: 13px;
   }
 }
 
