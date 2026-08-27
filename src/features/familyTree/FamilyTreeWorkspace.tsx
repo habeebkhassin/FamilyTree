@@ -23,6 +23,8 @@ import './FamilyTreeWorkspace.css'
 
 interface FamilyTreeWorkspaceProps {
   tree: FamilyTree
+  /** A restored backup created a new tree; the app should switch to it. */
+  onTreeImported: (familyTreeId: string) => void
 }
 
 type View =
@@ -42,7 +44,7 @@ function describeLinkError(error: unknown): string {
   return 'Something went wrong connecting them.'
 }
 
-export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
+export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspaceProps) {
   const {
     people,
     parentLinks,
@@ -228,6 +230,7 @@ export function FamilyTreeWorkspace({ tree }: FamilyTreeWorkspaceProps) {
             onOpenTreeView={openTreeView}
             onOpenFamilyGroups={openFamilyGroups}
             onRetry={reload}
+            onImported={onTreeImported}
           />
         )}
 

@@ -49,4 +49,18 @@ export type {
 } from './reconciler'
 export { changeSetsFrom, reconcileEvents } from './reconciler'
 export { getOutboxEntries, getOutboxSize, getPendingChangeEvents } from './outbox'
+/**
+ * Phase A. The seam a future server will sit behind — declared, not
+ * implemented. No transport, no vendor, no network; NullRemoteAdapter is
+ * what the application uses today and what the tests use to prove
+ * everything above the seam works without a server.
+ */
+export type {
+  BootstrapResult,
+  PullResult,
+  PushResult,
+  RemoteAdapter,
+  RemoteCursor,
+} from './remoteAdapter'
+export { NullRemoteAdapter } from './remoteAdapter'
 export { ensureSyncState, getSyncState } from './syncState'

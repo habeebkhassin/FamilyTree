@@ -53,8 +53,23 @@ function App() {
     setStatus('ready')
   }
 
+  /**
+   * A backup was restored into a brand-new tree. Switch to it, because a
+   * restore that leaves you looking at the tree you already had gives no
+   * sign it worked.
+   */
+  async function handleTreeImported(familyTreeId: string) {
+    const tree = await getFamilyTree(familyTreeId)
+    if (!tree) return
+    setStoredActiveFamilyTreeId(tree.id)
+    setActiveTree(tree)
+    setStatus('ready')
+  }
+
   if (status === 'loading') return <LoadingScreen />
-  if (status === 'ready' && activeTree) return <FamilyTreeWorkspace tree={activeTree} />
+  if (status === 'ready' && activeTree) {
+    return <FamilyTreeWorkspace tree={activeTree} onTreeImported={handleTreeImported} />
+  }
   return <WelcomeScreen onCreate={handleCreateFamilyTree} />
 }
 

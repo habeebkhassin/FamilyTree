@@ -2,6 +2,7 @@ import type { FamilyTree, Person } from '../../types'
 import { Button } from '../../components/Button'
 import { Card } from '../../components/Card'
 import { PersonCard } from '../people/PersonCard'
+import { BackupActions } from './BackupActions'
 import './FamilyTreeHome.css'
 
 type PeopleStatus = 'loading' | 'ready' | 'error'
@@ -15,6 +16,8 @@ interface FamilyTreeHomeProps {
   onOpenTreeView: () => void
   onOpenFamilyGroups: () => void
   onRetry: () => void
+  /** A backup was restored; the tree it created is now on this device. */
+  onImported: (familyTreeId: string) => void
 }
 
 export function FamilyTreeHome({
@@ -26,6 +29,7 @@ export function FamilyTreeHome({
   onOpenTreeView,
   onOpenFamilyGroups,
   onRetry,
+  onImported,
 }: FamilyTreeHomeProps) {
   return (
     <div className="home">
@@ -79,6 +83,12 @@ export function FamilyTreeHome({
           </div>
         </>
       )}
+
+      {/*
+        Outside the "has people" branch on purpose: an empty tree is
+        exactly where somebody restoring a backup is likely to be standing.
+      */}
+      {status === 'ready' && <BackupActions tree={tree} onImported={onImported} />}
     </div>
   )
 }

@@ -1,0 +1,47 @@
+/*
+  Backup controls — Phase A.
+
+  Quiet on purpose. Saving a copy of the family is important but rare, so
+  it sits below the tree as a footer rather than competing with the things
+  someone opens the app to do.
+*/
+.backup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 20px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.backup__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* The real control is the button beside it; this only opens the picker. */
+.backup__file {
+  display: none;
+}
+
+.backup__message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.backup__message--error {
+  color: var(--danger);
+}
+
+@media (max-width: 480px) {
+  .backup__actions {
+    flex-direction: column;
+  }
+
+  .backup__actions .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
