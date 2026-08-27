@@ -179,121 +179,300 @@ export async function layoutFamilyGraph(
     const rowNodes = nodesByRank.get(rank) ?? []
     const rowIds = new Set(rowNodes.map((node) => node.id))
 
-    // --- 1. Union-find: merge nodes connected by a Union edge into clusters ---
-    const clusterParent = new Map<string, string>()
-    for (const node of rowNodes) clusterParent.set(node.id, node.id)
-    function find(id: string): string {
+    // --- 1. Rigid couple blocks: Union connectivity ONLY ---------------
+    //
+    // A couple is partnerA + junction + partnerB, and nothing may be
+    // placed between them. Union-find runs over union segments alone, so
+    // the block stays rigid; remarriage still chains correctly, because a
+    // person married twice is a member of both unions and merges them.
+    //
+    // Phase 4D also merged siblings into this same structure, which is
+    // what broke it: union-find is transitive, so in any row holding two
+    // sibling couples every node collapsed into a single cluster, and the
+    // partners inside it were then reordered by a key that had nothing to
+    // do with their partner. Siblings are handled at the next level down
+    // instead, as a SOFT grouping that cannot pull a couple apart.
+    const blockParent = new Map<string, string>()
+    for (const node of rowNodes) blockParent.set(node.id, node.id)
+    function findBlock(id: string): string {
       let root = id
-      while (clusterParent.get(root) !== root) root = clusterParent.get(root) as string
+      while (blockParent.get(root) !== root) root = blockParent.get(root) as string
       let current = id
-      while (clusterParent.get(current) !== root) {
-        const next = clusterParent.get(current) as string
-        clusterParent.set(current, root)
+      while (blockParent.get(current) !== root) {
+        const next = blockParent.get(current) as string
+        blockParent.set(current, root)
         current = next
       }
       return root
     }
-    function mergeCluster(a: string, b: string): void {
-      const rootA = find(a)
-      const rootB = find(b)
-      if (rootA !== rootB) clusterParent.set(rootA, rootB)
+    function mergeBlock(a: string, b: string): void {
+      const rootA = findBlock(a)
+      const rootB = findBlock(b)
+      if (rootA !== rootB) blockParent.set(rootA, rootB)
     }
     for (const node of rowNodes) {
       if (node.type !== 'unionJunction') continue
       for (const partnerId of partnerIdsByJunction.get(node.id) ?? []) {
-        if (rowIds.has(partnerId)) mergeCluster(node.id, partnerId)
+        if (rowIds.has(partnerId)) mergeBlock(node.id, partnerId)
       }
     }
-    // Siblings cluster together too, even when their shared parent(s)
-    // aren't themselves Union-connected (e.g. two directly-recorded
-    // parents with no recorded Union between them) — without this, full
-    // and half siblings would each land in their own singleton cluster
-    // and get the wide cross-branch gap from each other despite sharing
-    // a parent.
-    const rowIdsByParentAnchor = new Map<string, string[]>()
+
+    // --- 2. Which family each person is ordered by ----------------------
+    //
+    // A child can hang off more than one anchor - two recorded parents
+    // with no Union between them, or a half-sibling belonging to two
+    // marriages. The choice must be structural and repeatable, never a
+    // reading of where something happened to be drawn.
+    //
+    // The rule: join the anchor you share with the most other people in
+    // this row, and break ties on the lower anchor id. Sharing more
+    // siblings is the stronger claim on where somebody belongs, and both
+    // halves of the rule depend only on the graph, so the same family
+    // always produces the same answer.
+    const rowChildCountByAnchor = new Map<string, number>()
     for (const node of rowNodes) {
-      if (node.type !== 'person') continue
+      if (node.type === 'unionJunction') continue
       for (const anchorId of parentAnchorIdsByChild.get(node.id) ?? []) {
-        const siblings = rowIdsByParentAnchor.get(anchorId) ?? []
-        siblings.push(node.id)
-        rowIdsByParentAnchor.set(anchorId, siblings)
+        rowChildCountByAnchor.set(anchorId, (rowChildCountByAnchor.get(anchorId) ?? 0) + 1)
       }
     }
-    for (const siblingIds of rowIdsByParentAnchor.values()) {
-      for (let i = 1; i < siblingIds.length; i += 1) {
-        mergeCluster(siblingIds[0] as string, siblingIds[i] as string)
+    /** Picks the winner by (most shared children, then lowest id). */
+    function pickAnchor(candidates: Iterable<string>, weight: (id: string) => number): string | undefined {
+      let best: string | undefined
+      let bestWeight = -1
+      for (const id of [...candidates].sort()) {
+        const w = weight(id)
+        if (w > bestWeight) {
+          bestWeight = w
+          best = id
+        }
       }
+      return best
     }
-
-    // --- 2. Local key per node: children pull toward their parents' average x; junctions pull toward their partners' average key ---
-    const localKey = new Map<string, number>()
-    for (const node of rowNodes) {
-      // Everything except a junction is pulled toward its parents — a
-      // collapsed group node inherits the same treatment as a person, so
-      // it lands under whoever its members descend from rather than
-      // wherever ELK's unrelated ordering happened to put it. No-op when
-      // nothing is collapsed.
-      if (node.type !== 'unionJunction') {
-        localKey.set(node.id, resolveParentAverageX(node.id) ?? elkXById.get(node.id) ?? 0)
-      }
-    }
-    for (const node of rowNodes) {
-      if (node.type !== 'unionJunction') continue
-      const allPartners = partnerIdsByJunction.get(node.id) ?? []
-      const partners = allPartners.filter((id) => rowIds.has(id))
-      if (partners.length > 0) {
-        const avg = partners.reduce((sum, id) => sum + (localKey.get(id) ?? elkXById.get(id) ?? 0), 0) / partners.length
-        localKey.set(node.id, avg)
-        continue
-      }
-      // No partner on this row. Normally impossible — rank.ts puts
-      // partners and their junction on the same rank — but a collapsed
-      // group container is drawn at the top of its span, so a junction
-      // joining two collapsed families can end up a row or more below
-      // both of them. Pull it toward wherever those containers were
-      // actually placed instead of stranding it on ELK's unrelated x,
-      // which otherwise flings it to the far side of the graph.
-      const placedPartnerXs = allPartners
-        .map((id) => finalCenterX.get(id))
-        .filter((x): x is number => x !== undefined)
-      localKey.set(
-        node.id,
-        placedPartnerXs.length > 0
-          ? placedPartnerXs.reduce((sum, x) => sum + x, 0) / placedPartnerXs.length
-          : (elkXById.get(node.id) ?? 0),
-      )
+    function chosenAnchorFor(personId: string): string | undefined {
+      const anchors = parentAnchorIdsByChild.get(personId) ?? []
+      if (anchors.length === 0) return undefined
+      return pickAnchor(anchors, (id) => rowChildCountByAnchor.get(id) ?? 0)
     }
 
-    // --- 3. Group into clusters, compute each cluster's row-level sort key ---
-    const clusters = new Map<string, FamilyNode[]>()
+    // --- 3. Assemble the blocks, and order their members ---------------
+    const blockMembers = new Map<string, FamilyNode[]>()
     for (const node of rowNodes) {
-      const root = find(node.id)
-      const members = clusters.get(root) ?? []
+      const root = findBlock(node.id)
+      const members = blockMembers.get(root) ?? []
       members.push(node)
-      clusters.set(root, members)
+      blockMembers.set(root, members)
     }
 
-    const clusterEntries = [...clusters.values()].map((members) => {
-      const resolvedMemberKeys = members
+    /**
+     * Members of a block, left to right.
+     *
+     * A block is a chain of partners linked by junctions, so this walks
+     * that chain from one end rather than sorting by a numeric key - which
+     * is what used to strand a junction away from the couple it joins. The
+     * end to start from, and every branch on the way, is chosen by
+     * parent-average first and node id second, so the walk is total and
+     * deterministic.
+     */
+    function orderedMembersOf(members: FamilyNode[]): FamilyNode[] {
+      if (members.length <= 1) return members
+      const memberIds = new Set(members.map((member) => member.id))
+      const byId = new Map(members.map((member) => [member.id, member]))
+      const adjacency = new Map<string, string[]>()
+      for (const member of members) adjacency.set(member.id, [])
+      for (const member of members) {
+        if (member.type !== 'unionJunction') continue
+        for (const partnerId of partnerIdsByJunction.get(member.id) ?? []) {
+          if (!memberIds.has(partnerId)) continue
+          adjacency.get(member.id)?.push(partnerId)
+          adjacency.get(partnerId)?.push(member.id)
+        }
+      }
+      const compare = (a: string, b: string): number => {
+        const keyA = resolveParentAverageX(a) ?? Number.POSITIVE_INFINITY
+        const keyB = resolveParentAverageX(b) ?? Number.POSITIVE_INFINITY
+        if (keyA !== keyB) return keyA < keyB ? -1 : 1
+        return a < b ? -1 : a > b ? 1 : 0
+      }
+      // An endpoint of the chain - a partner married once. A ring would
+      // have none, which genealogy does not produce, but the fallback
+      // keeps the walk total rather than trusting that.
+      const ends = members
+        .map((member) => member.id)
+        .filter((id) => (adjacency.get(id)?.length ?? 0) <= 1)
+        .sort(compare)
+      const ordered: FamilyNode[] = []
+      const visited = new Set<string>()
+      let current: string | undefined = ends[0] ?? [...memberIds].sort(compare)[0]
+      while (current !== undefined) {
+        visited.add(current)
+        const node = byId.get(current)
+        if (node) ordered.push(node)
+        current = (adjacency.get(current) ?? []).filter((id) => !visited.has(id)).sort(compare)[0]
+      }
+      // Anything the walk could not reach still has to be drawn.
+      for (const member of members) if (!visited.has(member.id)) ordered.push(member)
+
+      // A chain has two orientations and the walk only produced one of
+      // them. Choose the one whose anchored members read left to right in
+      // the same order as the families they came from.
+      //
+      // This is what a remarriage needs. Harold married Edith and Nancy,
+      // so the block is Edith-Harold-Nancy or Nancy-Harold-Edith; Edith's
+      // own parents sit at the right-hand end of the row above, so putting
+      // her on the left drags her edge across the whole graph. Starting
+      // from whichever end happened to be anchored gets this wrong half
+      // the time, and it is decided here on anchor values alone — no
+      // reading of where anything was drawn.
+      const anchorInversions = (list: FamilyNode[]): number => {
+        const anchors = list
+          .map((member) => resolveParentAverageX(member.id))
+          .filter((x): x is number => x !== undefined)
+        let count = 0
+        for (let i = 0; i < anchors.length; i += 1) {
+          for (let j = i + 1; j < anchors.length; j += 1) {
+            if ((anchors[i] as number) > (anchors[j] as number)) count += 1
+          }
+        }
+        return count
+      }
+      const reversed = [...ordered].reverse()
+      const forwardScore = anchorInversions(ordered)
+      const reverseScore = anchorInversions(reversed)
+      if (reverseScore < forwardScore) return reversed
+      // A tie leaves the orientation undetermined, so settle it on the id
+      // of the end member and keep the same family drawn the same way.
+      if (reverseScore === forwardScore) {
+        const head = ordered[0]?.id ?? ''
+        const tail = reversed[0]?.id ?? ''
+        if (tail < head) return reversed
+      }
+      return ordered
+    }
+
+    /**
+     * Where a block wants to sit, from the family above it.
+     *
+     * Only members whose own parents are known contribute. A married-in
+     * partner has no parents in the tree, so including them would move the
+     * couple toward wherever that person's fallback position happened to
+     * be rather than toward the family the block descends from - the
+     * signal Phase 5C-10 found poisoning the row below.
+     */
+    function signalOf(members: FamilyNode[]): number | undefined {
+      const resolved = members
         .filter((member) => member.type !== 'unionJunction')
         .map((member) => resolveParentAverageX(member.id))
         .filter((x): x is number => x !== undefined)
-      const sortKey =
-        resolvedMemberKeys.length > 0
-          ? resolvedMemberKeys.reduce((sum, x) => sum + x, 0) / resolvedMemberKeys.length
-          : // Falls back to each member's own local key, which already
-            // degrades to ELK's x when nothing better is known — so this
-            // is unchanged behaviour except for a junction that learned
-            // its position from collapsed partners above it.
-            members.reduce((sum, member) => sum + (localKey.get(member.id) ?? elkXById.get(member.id) ?? 0), 0) /
-            members.length
-      const tiebreak = members.reduce((sum, member) => sum + (elkXById.get(member.id) ?? 0), 0) / members.length
-      const ordered = [...members].sort((a, b) => (localKey.get(a.id) ?? 0) - (localKey.get(b.id) ?? 0))
-      return { sortKey, tiebreak, members: ordered }
-    })
-    clusterEntries.sort((a, b) => (a.sortKey !== b.sortKey ? a.sortKey - b.sortKey : a.tiebreak - b.tiebreak))
+      if (resolved.length > 0) {
+        return resolved.reduce((sum, x) => sum + x, 0) / resolved.length
+      }
+      // A junction whose partners are not on this row at all - a collapsed
+      // group container is drawn at the top of its span, so the junction
+      // joining two collapsed families can fall a row below both. Follow
+      // the partners to wherever they were actually placed.
+      const placed = members
+        .filter((member) => member.type === 'unionJunction')
+        .flatMap((member) => partnerIdsByJunction.get(member.id) ?? [])
+        .map((id) => finalCenterX.get(id))
+        .filter((x): x is number => x !== undefined)
+      if (placed.length > 0) return placed.reduce((sum, x) => sum + x, 0) / placed.length
+      return undefined
+    }
 
-    // --- 4. Assign cumulative x: SAME_UNIT_GAP within a cluster, CROSS_UNIT_GAP between clusters ---
+    const elkMean = (members: FamilyNode[]): number =>
+      members.reduce((sum, member) => sum + (elkXById.get(member.id) ?? 0), 0) / members.length
+
+    const blocks = [...blockMembers.values()].map((members) => {
+      const ordered = orderedMembersOf(members)
+      const signal = signalOf(ordered)
+      return {
+        members: ordered,
+        signal,
+        // ELK still decides where a block with no family anchor goes -
+        // the top generation, and disconnected branches, which is also
+        // what keeps separate components from interleaving.
+        sortKey: signal ?? elkMean(ordered),
+        tiebreak: elkMean(ordered),
+        id: ordered.map((member) => member.id).sort()[0] as string,
+      }
+    })
+
+    // --- 4. Soft sibling groups ----------------------------------------
+    //
+    // Blocks that descend from the same family sit together, separated by
+    // the same small gap as members of one block, while unrelated families
+    // get the wider cross-branch gap. Grouping is soft precisely because
+    // it is applied to whole blocks: it can place two couples side by
+    // side, and it can never reach inside one.
+    //
+    // A block takes the anchor held by most of its members, ties on the
+    // lower id - the same rule as an individual, applied one level up, so
+    // a couple who are each other's second cousins still lands somewhere
+    // predictable.
+    const groupKeyOf = new Map<string, string>()
+    for (const block of blocks) {
+      const counts = new Map<string, number>()
+      for (const member of block.members) {
+        if (member.type === 'unionJunction') continue
+        const anchorId = chosenAnchorFor(member.id)
+        if (anchorId !== undefined) counts.set(anchorId, (counts.get(anchorId) ?? 0) + 1)
+      }
+      const anchorId = pickAnchor(counts.keys(), (id) => counts.get(id) ?? 0)
+      // No anchor at all means this block is its own group, which is what
+      // keeps unrelated families apart rather than lumping them together.
+      groupKeyOf.set(block.id, anchorId !== undefined ? 'anchor:' + anchorId : 'block:' + block.id)
+    }
+
+    const groupsInRow = new Map<string, typeof blocks>()
+    for (const block of blocks) {
+      const key = groupKeyOf.get(block.id) as string
+      const list = groupsInRow.get(key) ?? []
+      list.push(block)
+      groupsInRow.set(key, list)
+    }
+
+    /**
+     * Order by family first, and never by ELK once family has spoken.
+     *
+     * Siblings all descend from the same place, so they tie on `sortKey`
+     * by construction. Letting ELK break that tie put them in an order
+     * derived from a layout computed under a different layering — three
+     * children of one couple came out c3, c1, c2 for no reason a reader
+     * could see. ELK is still the right answer for a block with no family
+     * above it at all, which is the only case it is consulted in now.
+     */
+    const compareByKey = (
+      a: { sortKey: number; tiebreak: number; id: string; signal: number | undefined },
+      b: { sortKey: number; tiebreak: number; id: string; signal: number | undefined },
+    ): number => {
+      if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey
+      if (a.signal === undefined || b.signal === undefined) {
+        if (a.tiebreak !== b.tiebreak) return a.tiebreak - b.tiebreak
+      }
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    }
+
+    const groupEntries = [...groupsInRow.entries()].map(([key, members]) => {
+      const sorted = [...members].sort(compareByKey)
+      // A group is ordered by the families that actually have a parent
+      // above them; a group of entirely unanchored blocks falls back to
+      // ELK, as its blocks already do individually.
+      const anchored = sorted.filter((block) => block.signal !== undefined)
+      const source = anchored.length > 0 ? anchored : sorted
+      return {
+        blocks: sorted,
+        sortKey: source.reduce((sum, block) => sum + block.sortKey, 0) / source.length,
+        tiebreak: sorted.reduce((sum, block) => sum + block.tiebreak, 0) / sorted.length,
+        id: key,
+        // Anchored if any block in it is, so a sibling group is ordered by
+        // its family rather than by ELK, exactly as its blocks are.
+        signal: anchored.length > 0 ? anchored[0]?.signal : undefined,
+      }
+    })
+    groupEntries.sort(compareByKey)
+
+    // --- 5. Assign cumulative x ----------------------------------------
     // A collapsed group container occupies several rows at once, so the
     // rows it reaches into must step around the column it already claimed
     // in the row where it was placed. Rows are processed top-down, so a
@@ -302,7 +481,7 @@ export async function layoutFamilyGraph(
       (reservation) => reservation.minRank < rank && reservation.maxRank >= rank,
     )
     // Clears by SAME_UNIT_GAP rather than the full cross-branch gap so a
-    // narrow node can still settle in the space BETWEEN two containers —
+    // narrow node can still settle in the space BETWEEN two containers -
     // which is exactly where the junction joining two collapsed families
     // belongs. Anything too wide to fit there simply collides again on the
     // next pass and keeps moving right.
@@ -322,28 +501,47 @@ export async function layoutFamilyGraph(
     }
 
     let cursorX = 0
-    let isFirstCluster = true
-    for (const cluster of clusterEntries) {
-      if (!isFirstCluster) cursorX += CROSS_UNIT_GAP
-      let isFirstMember = true
-      for (const member of cluster.members) {
-        if (!isFirstMember) cursorX += SAME_UNIT_GAP
-        const width = widthByNodeId.get(member.id) ?? PERSON_NODE_WIDTH
-        cursorX = skipReservedColumns(cursorX, width)
-        finalX.set(member.id, cursorX)
-        finalCenterX.set(member.id, cursorX + width / 2)
-        if (member.type === 'familyGroup' && member.data.maxRank > member.data.minRank) {
-          spanReservations.push({
-            minRank: member.data.minRank,
-            maxRank: member.data.maxRank,
-            left: cursorX,
-            right: cursorX + width,
-          })
+    let isFirstGroup = true
+    for (const groupEntry of groupEntries) {
+      if (!isFirstGroup) cursorX += CROSS_UNIT_GAP
+      let isFirstBlock = true
+      for (const block of groupEntry.blocks) {
+        // Siblings sit as close together as the members of one couple do;
+        // the wider gap is reserved for a change of family.
+        if (!isFirstBlock) cursorX += SAME_UNIT_GAP
+
+        // The whole block steps around a reserved column, never part of
+        // it. Testing each member separately let a container's column fall
+        // between two partners and split them — which is the exact defect
+        // this phase exists to remove, arriving by a different route. A
+        // block is rigid against collapsed groups too, or it is not rigid.
+        const blockWidth = block.members.reduce(
+          (sum, member, index) =>
+            sum + (widthByNodeId.get(member.id) ?? PERSON_NODE_WIDTH) + (index > 0 ? SAME_UNIT_GAP : 0),
+          0,
+        )
+        cursorX = skipReservedColumns(cursorX, blockWidth)
+
+        let isFirstMember = true
+        for (const member of block.members) {
+          if (!isFirstMember) cursorX += SAME_UNIT_GAP
+          const width = widthByNodeId.get(member.id) ?? PERSON_NODE_WIDTH
+          finalX.set(member.id, cursorX)
+          finalCenterX.set(member.id, cursorX + width / 2)
+          if (member.type === 'familyGroup' && member.data.maxRank > member.data.minRank) {
+            spanReservations.push({
+              minRank: member.data.minRank,
+              maxRank: member.data.maxRank,
+              left: cursorX,
+              right: cursorX + width,
+            })
+          }
+          cursorX += width
+          isFirstMember = false
         }
-        cursorX += width
-        isFirstMember = false
+        isFirstBlock = false
       }
-      isFirstCluster = false
+      isFirstGroup = false
     }
   }
 

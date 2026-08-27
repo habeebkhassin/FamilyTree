@@ -48,9 +48,11 @@
 import { buildFamilyGraph } from '../src/features/tree-view/graphAdapter'
 import { computeRanks } from '../src/features/tree-view/rank'
 import { projectFamilyGroups } from '../src/features/tree-view/groupProjection'
+import { projectFamilyTreeView } from '../src/features/tree-view/viewProjection'
+import type { ImplementedView } from '../src/features/tree-view/viewTypes'
 import { layoutFamilyGraph, nodeWidth, PERSON_NODE_SIZE } from '../src/features/tree-view/layout'
 import type { FamilyNode } from '../src/features/tree-view/types'
-import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../src/types'
+import type { FamilyGroup, FamilyGroupMember, ParentLink, ParentRelationship, Person, Union } from '../src/types'
 
 const TREE = 't'
 const AT = '2026-01-01T00:00:00.000Z'
@@ -58,8 +60,10 @@ const AT = '2026-01-01T00:00:00.000Z'
 const person = (id: string): Person => ({
   id, familyTreeId: TREE, firstName: id, lastName: 'X', gender: 'unknown', createdAt: AT, updatedAt: AT,
 })
-const link = (id: string, parentId: string, childId: string): ParentLink => ({
-  id, familyTreeId: TREE, parentId, childId, relationship: 'biological', createdAt: AT, updatedAt: AT,
+const link = (
+  id: string, parentId: string, childId: string, relationship: ParentRelationship = 'biological',
+): ParentLink => ({
+  id, familyTreeId: TREE, parentId, childId, relationship, createdAt: AT, updatedAt: AT,
 })
 const union = (id: string, a: string, b: string): Union => ({
   id, familyTreeId: TREE, partnerAId: a, partnerBId: b, status: 'married', createdAt: AT, updatedAt: AT,
@@ -71,12 +75,25 @@ const member = (id: string, g: string, p: string): FamilyGroupMember => ({
   id, familyTreeId: TREE, familyGroupId: g, personId: p, createdAt: AT, updatedAt: AT,
 })
 
+/** Both parents of each child, the ordinary case. */
+function kids(
+  a: string, b: string, children: string[], relationship: ParentRelationship = 'biological',
+): [string, string, ParentRelationship][] {
+  return children.flatMap((c) => [
+    [a, c, relationship] as [string, string, ParentRelationship],
+    [b, c, relationship] as [string, string, ParentRelationship],
+  ])
+}
+
 interface Fixture {
   name: string
   people: string[]
-  links: [string, string][]
+  /** [parent, child] or [parent, child, subtype]. Layout is subtype-blind; the views are not. */
+  links: ([string, string] | [string, string, ParentRelationship])[]
   unions: [string, string][]
   groups?: { id: string; members: string[]; collapsed: boolean }[]
+  /** When set, the fixture is also measured through each view from this person. */
+  focal?: string
 }
 
 const FIXTURES: Fixture[] = [
@@ -171,6 +188,85 @@ const GROUPED: Fixture[] = [
   },
 ]
 
+/**
+ * A realistic family — Phase 5C-11a.
+ *
+ * The synthetic fixtures above are each built to isolate one shape. This
+ * one is built to be ordinary: fifty people over five generations, four
+ * sibling groups, half-siblings through a second union, adopted, step and
+ * foster children, cousins on three branches, eighteen unions, four Family
+ * Groups and one couple connected to nobody.
+ *
+ * It exists because Phase 5C-5 passed every synthetic fixture and still
+ * had to be reverted: it regressed the My Family view on real data. A
+ * change that cannot be measured on a family this size has not been
+ * measured. `focal` also runs it through all four views, which is where
+ * that regression actually showed up.
+ */
+const WHITFIELD: Fixture = {
+  name: '12. realistic family (50 people, 5 generations)',
+  focal: 'margaret',
+  people: [
+    'alfred', 'mabel', 'stanley', 'doris',
+    'harold', 'vera', 'cyril', 'edith', 'frank', 'norman', 'joyce', 'gladys', 'nancy',
+    'margaret', 'brian', 'sylvia', 'colin', 'dennis', 'trevor', 'pauline', 'maureen',
+    'barry', 'lorraine', 'keith', 'susan', 'malcolm', 'wendy', 'hazel', 'yvonne',
+    'andrew', 'fiona', 'rosie', 'gavin', 'tanya', 'neil', 'craig', 'denise', 'simon',
+    'nigel', 'paula', 'ross', 'kim', 'stuart',
+    'ellie', 'jack', 'rowan', 'leah', 'max',
+    'ivor', 'bridget',
+  ],
+  links: [
+    ...kids('alfred', 'mabel', ['harold', 'vera', 'cyril']),
+    ...kids('stanley', 'doris', ['edith', 'frank']),
+    ...kids('harold', 'edith', ['margaret', 'brian', 'sylvia']),
+    ...kids('harold', 'edith', ['colin'], 'adopted'),
+    // Harold's earlier union: Dennis is a half-sibling to the four above.
+    ...kids('harold', 'nancy', ['dennis']),
+    ...kids('vera', 'norman', ['trevor', 'pauline']),
+    ...kids('cyril', 'joyce', ['maureen']),
+    ...kids('frank', 'gladys', ['barry', 'lorraine']),
+    ...kids('margaret', 'keith', ['andrew', 'fiona']),
+    ...kids('margaret', 'keith', ['rosie'], 'foster'),
+    // Keith's child from before: family to Margaret, but not descent.
+    ['keith', 'nigel'] as [string, string],
+    ['margaret', 'nigel', 'step'] as [string, string, ParentRelationship],
+    ...kids('brian', 'susan', ['gavin']),
+    ...kids('sylvia', 'malcolm', ['tanya', 'neil']),
+    ...kids('colin', 'wendy', ['craig']),
+    ...kids('trevor', 'hazel', ['denise']),
+    ...kids('barry', 'yvonne', ['simon']),
+    ...kids('andrew', 'paula', ['ellie', 'jack']),
+    ...kids('fiona', 'ross', ['rowan']),
+    ...kids('gavin', 'kim', ['leah']),
+    ...kids('tanya', 'stuart', ['max']),
+  ],
+  unions: [
+    ['alfred', 'mabel'], ['stanley', 'doris'], ['harold', 'edith'], ['harold', 'nancy'],
+    ['vera', 'norman'], ['cyril', 'joyce'], ['frank', 'gladys'],
+    ['margaret', 'keith'], ['brian', 'susan'], ['sylvia', 'malcolm'], ['colin', 'wendy'],
+    ['trevor', 'hazel'], ['barry', 'yvonne'],
+    ['andrew', 'paula'], ['fiona', 'ross'], ['gavin', 'kim'], ['tanya', 'stuart'],
+    ['ivor', 'bridget'],
+  ],
+  groups: [
+    { id: 'gElm', members: ['alfred', 'mabel', 'harold', 'cyril', 'joyce'], collapsed: false },
+    { id: 'gVera', members: ['vera', 'norman', 'trevor', 'pauline', 'hazel', 'denise'], collapsed: false },
+    { id: 'gBarrow', members: ['stanley', 'doris', 'frank', 'gladys', 'barry'], collapsed: false },
+    { id: 'gAndrew', members: ['andrew', 'paula', 'ellie', 'jack'], collapsed: false },
+  ],
+}
+
+/** The same family with two groups collapsed, so containers are exercised at scale. */
+const WHITFIELD_COLLAPSED: Fixture = {
+  ...WHITFIELD,
+  name: '13. realistic family + TWO collapsed groups',
+  groups: (WHITFIELD.groups ?? []).map((g) => ({
+    ...g,
+    collapsed: g.id === 'gVera' || g.id === 'gBarrow',
+  })),
+}
+
 function centreX(node: FamilyNode): number {
   return node.position.x + nodeWidth(node) / 2
 }
@@ -186,9 +282,46 @@ interface Metrics {
   width: number
   rows: number
   widestRow: number
+  /**
+   * Distance between the two partners of a Union — Phase 5C-11a.
+   *
+   * The instrument was blind to this until now, which is why couples
+   * being drawn hundreds of pixels apart went unnoticed through four
+   * phases. Two partners standing either side of their junction span
+   * exactly 214px (80 + 20 + 14 + 20 + 80), so anything above
+   * TORN_COUPLE_PX means somebody has been placed between them.
+   */
+  maxUnionSpan: number
+  meanUnionSpan: number
+  tornCouples: number
+  /**
+   * Discordant pairs between a row's left-to-right order and the order of
+   * the parent families those nodes descend from — Phase 5C-11a.
+   *
+   * The anchor is the LEFTMOST recorded person-parent, with a union
+   * junction resolved back to its partners first. Two reasons for that
+   * choice. Resolving the junction is what makes the measure structural
+   * rather than a reading of where the drawing happened to put a
+   * connector. Taking the minimum rather than the mean is what keeps it
+   * well defined when a couple is torn: a mean slides around with
+   * whichever partner was flung across the row, so a mean-based measure
+   * scores a badly inverted row as perfect — it only ever asks whether
+   * the layout agrees with itself.
+   *
+   * Zero means every child row reads in the same order as the parent
+   * families above it.
+   */
+  orderInversions: number
 }
 
-function measure(nodes: FamilyNode[], edges: { source: string; target: string; data?: unknown }[]): Metrics {
+/** A couple placed side by side spans 214px; a little slack for rounding. */
+const TORN_COUPLE_PX = 215
+
+function measure(
+  nodes: FamilyNode[],
+  edges: { source: string; target: string; data?: unknown }[],
+  unions: [string, string][] = [],
+): Metrics {
   const byId = new Map(nodes.map((n) => [n.id, n]))
 
   // Parent-child gaps, measured against whatever the edge actually joins —
@@ -209,7 +342,11 @@ function measure(nodes: FamilyNode[], edges: { source: string; target: string; d
       const from = byId.get(edge.source)
       const to = byId.get(edge.target)
       if (!from || !to) return null
-      return { x1: centreX(from), y1: from.position.y, x2: centreX(to), y2: to.position.y }
+      return {
+        source: edge.source,
+        target: edge.target,
+        x1: centreX(from), y1: from.position.y, x2: centreX(to), y2: to.position.y,
+      }
     })
     .filter((s): s is NonNullable<typeof s> => s !== null)
 
@@ -220,6 +357,16 @@ function measure(nodes: FamilyNode[], edges: { source: string; target: string; d
     for (let j = i + 1; j < segments.length; j += 1) {
       const p = segments[i] as NonNullable<(typeof segments)[number]>
       const q = segments[j] as NonNullable<(typeof segments)[number]>
+      // Two edges meeting at a shared node do not cross — they join. The
+      // orientation test is degenerate on a shared endpoint, and a union
+      // segment is horizontal, so every parent-child edge leaving a
+      // junction was being scored against the two segments that reach it.
+      // That produced six crossings for one couple with three children,
+      // and flipped purely on which partner was drawn to the left.
+      if (
+        p.source === q.source || p.source === q.target ||
+        p.target === q.source || p.target === q.target
+      ) continue
       if (
         ccw(p.x1, p.y1, q.x1, q.y1, q.x2, q.y2) !== ccw(p.x2, p.y2, q.x1, q.y1, q.x2, q.y2) &&
         ccw(p.x1, p.y1, p.x2, p.y2, q.x1, q.y1) !== ccw(p.x1, p.y1, p.x2, p.y2, q.x2, q.y2)
@@ -246,6 +393,68 @@ function measure(nodes: FamilyNode[], edges: { source: string; target: string; d
     }
   }
 
+  // Couple spans. Measured from the Union records rather than the drawn
+  // segments, so a couple counts once however it happens to be routed.
+  const unionSpans: number[] = []
+  for (const [a, b] of unions) {
+    const na = byId.get(a)
+    const nb = byId.get(b)
+    // A partner absorbed into a collapsed group has no node of its own.
+    if (!na || !nb) continue
+    unionSpans.push(Math.abs(centreX(na) - centreX(nb)))
+  }
+
+  // Order inversions, measured against the parent FAMILY rather than the
+  // connector. A junction is resolved back to the partners it joins, so
+  // the anchor is a person's position and not a drawing artefact.
+  const partnersOfJunction = new Map<string, string[]>()
+  for (const edge of edges) {
+    if ((edge.data as { kind?: string } | undefined)?.kind !== 'unionSegment') continue
+    const data = edge.data as { segment?: string }
+    const junctionId = data.segment === 'a' ? edge.target : edge.source
+    const partnerId = data.segment === 'a' ? edge.source : edge.target
+    const list = partnersOfJunction.get(junctionId) ?? []
+    list.push(partnerId)
+    partnersOfJunction.set(junctionId, list)
+  }
+  const parentCentresOf = new Map<string, number[]>()
+  for (const edge of edges) {
+    if ((edge.data as { kind?: string } | undefined)?.kind !== 'parentChild') continue
+    const sources = partnersOfJunction.get(edge.source) ?? [edge.source]
+    const list = parentCentresOf.get(edge.target) ?? []
+    for (const sourceId of sources) {
+      const from = byId.get(sourceId)
+      if (from) list.push(centreX(from))
+    }
+    parentCentresOf.set(edge.target, list)
+  }
+  let orderInversions = 0
+  const byRow = new Map<number, FamilyNode[]>()
+  for (const node of nodes) {
+    const list = byRow.get(node.position.y) ?? []
+    list.push(node)
+    byRow.set(node.position.y, list)
+  }
+  for (const list of byRow.values()) {
+    const anchored = list
+      .map((n) => {
+        const parents = parentCentresOf.get(n.id)
+        if (!parents || parents.length === 0) return null
+        return { x: centreX(n), anchor: Math.min(...parents) }
+      })
+      .filter((v): v is { x: number; anchor: number } => v !== null)
+      .sort((p, q) => p.x - q.x)
+    for (let i = 0; i < anchored.length; i += 1) {
+      for (let j = i + 1; j < anchored.length; j += 1) {
+        // Strictly greater: equal anchors (true siblings) are not a
+        // disagreement, they simply carry no ordering opinion.
+        if ((anchored[i] as { anchor: number }).anchor > (anchored[j] as { anchor: number }).anchor) {
+          orderInversions += 1
+        }
+      }
+    }
+  }
+
   const lefts = nodes.map((n) => n.position.x)
   const rights = nodes.map((n) => n.position.x + nodeWidth(n))
 
@@ -260,12 +469,18 @@ function measure(nodes: FamilyNode[], edges: { source: string; target: string; d
     width: Math.round(Math.max(...rights) - Math.min(...lefts)),
     rows: rows.size,
     widestRow: Math.max(...[...rows.values()].map((r) => r.length)),
+    maxUnionSpan: unionSpans.length ? Math.round(Math.max(...unionSpans)) : 0,
+    meanUnionSpan: unionSpans.length
+      ? Math.round(unionSpans.reduce((s2, v) => s2 + v, 0) / unionSpans.length)
+      : 0,
+    tornCouples: unionSpans.filter((v) => v > TORN_COUPLE_PX).length,
+    orderInversions,
   }
 }
 
 async function run(fixture: Fixture) {
   const people = fixture.people.map(person)
-  const parentLinks = fixture.links.map(([p, c], i) => link(`l${i}`, p, c))
+  const parentLinks = fixture.links.map(([p, c, rel], i) => link(`l${i}`, p, c, rel))
   const unions = fixture.unions.map(([a, b], i) => union(`u${i}`, a, b))
   const graph = buildFamilyGraph(people, parentLinks, unions)
   const ranks = computeRanks(graph.nodes, graph.edges)
@@ -279,17 +494,63 @@ async function run(fixture: Fixture) {
   const projected = projectFamilyGroups(graph, groups, members, collapsed, ranks)
   const positioned = await layoutFamilyGraph(projected.nodes, projected.edges, projected.ranks)
 
-  return { metrics: measure(positioned, projected.edges), positioned, ranks: projected.ranks }
+  return {
+    metrics: measure(positioned, projected.edges, fixture.unions),
+    positioned,
+    ranks: projected.ranks,
+  }
+}
+
+/**
+ * The same fixture as each view actually draws it — Phase 5C-11a.
+ *
+ * Layout is view-agnostic, but the graph handed to it is not: each view
+ * removes people, which changes who competes for a row. Phase 5C-5 looked
+ * healthy on the full graph and regressed in My Family, so a layout claim
+ * measured only on `full` is not measured.
+ */
+const VIEWS: ImplementedView[] = ['full', 'my-family', 'lineage', 'descendants']
+
+async function runView(fixture: Fixture, view: ImplementedView, focalPersonId: string) {
+  const people = fixture.people.map(person)
+  const parentLinks = fixture.links.map(([p, c, rel], i) => link(`l${i}`, p, c, rel))
+  const unions = fixture.unions.map(([a, b], i) => union(`u${i}`, a, b))
+  const graph = buildFamilyGraph(people, parentLinks, unions)
+  const ranks = computeRanks(graph.nodes, graph.edges)
+
+  const framed = projectFamilyTreeView(graph, ranks, { view, focalPersonId })
+  const groups = (fixture.groups ?? []).map((g) => group(g.id))
+  const members = (fixture.groups ?? []).flatMap((g) =>
+    g.members.map((p, i) => member(`${g.id}-${i}`, g.id, p)),
+  )
+  const collapsed = new Set((fixture.groups ?? []).filter((g) => g.collapsed).map((g) => g.id))
+
+  const projected = projectFamilyGroups(
+    { nodes: framed.nodes, edges: framed.edges }, groups, members, collapsed, framed.ranks,
+  )
+  const positioned = await layoutFamilyGraph(projected.nodes, projected.edges, projected.ranks)
+  const shown = new Set(positioned.map((n) => n.id))
+  return measure(
+    positioned,
+    projected.edges,
+    fixture.unions.filter(([a, b]) => shown.has(a) && shown.has(b)),
+  )
 }
 
 const label = process.argv[2] ?? 'current'
 const results: Record<string, Metrics> = {}
 const rankSnapshot: Record<string, Record<string, number>> = {}
 
-for (const fixture of [...FIXTURES, ...GROUPED]) {
+for (const fixture of [...FIXTURES, ...GROUPED, WHITFIELD, WHITFIELD_COLLAPSED]) {
   const { metrics, ranks } = await run(fixture)
   results[fixture.name] = metrics
   rankSnapshot[fixture.name] = Object.fromEntries([...ranks].sort())
+
+  if (fixture.focal) {
+    for (const view of VIEWS) {
+      results[`${fixture.name} [${view}]`] = await runView(fixture, view, fixture.focal)
+    }
+  }
 }
 
 console.log(JSON.stringify({ label, nodeWidth: PERSON_NODE_SIZE.width, results, rankSnapshot }, null, 2))
