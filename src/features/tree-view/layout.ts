@@ -40,6 +40,29 @@ export function familyGroupNodeHeight(minRank: number, maxRank: number): number 
   return (Math.max(maxRank, minRank) - minRank) * ROW_HEIGHT + PERSON_NODE_HEIGHT
 }
 
+/**
+ * How many down-then-up rounds the placement refinement runs — Phase
+ * 5C-11b.
+ *
+ * Fixed rather than run to convergence: the cost stays predictable on a
+ * large family and the output cannot depend on a tolerance.
+ *
+ * Two, because that is where the realistic fixtures stop moving. On the
+ * fifty-person family the My Family view reaches a mean parent-child
+ * distance of 328px and edges over 400px of 22 at the second pass and is
+ * byte-identical at three, four, six and ten. Further passes only widen
+ * the graph — 31528px at two against 33102px at ten — without improving
+ * any gap measure.
+ */
+const REFINEMENT_PASSES = 2
+
+/**
+ * How much say a block with no family above or below it gets in where the
+ * row settles. Small, but not zero — it keeps such a block near where the
+ * ordering pass put it rather than letting it be shoved by its neighbours.
+ */
+const UNANCHORED_WEIGHT = 0.05
+
 /** Gap between two nodes that belong to the same family unit (siblings, or a partner beside their union junction). */
 const SAME_UNIT_GAP = 20
 /** Gap between two different family units/branches in the same row. */
@@ -164,8 +187,47 @@ export async function layoutFamilyGraph(
 
   const finalX = new Map<string, number>()
   const finalCenterX = new Map<string, number>()
-  /** Columns claimed by multi-row group containers, so lower rows can step around them. */
-  const spanReservations: { minRank: number; maxRank: number; left: number; right: number }[] = []
+  /**
+   * One row's worth of blocks, in the order stage one resolved, with
+   * everything stage two needs to slide them along the row: how wide the
+   * block is, how much clear space must precede it, and where each member
+   * sits inside it.
+   */
+  interface PlacedBlock {
+    members: FamilyNode[]
+    width: number
+    gapBefore: number
+    centreOffset: Map<string, number>
+    left: number
+    /**
+     * Where stage one put this block, kept fixed for the whole of stage
+     * two.
+     *
+     * A block with no family above or below it is pulled back to this
+     * rather than to wherever it currently sits. Targeting its current
+     * position instead made it ratchet: a heavier anchored neighbour
+     * pushes it right, that becomes its new target, and the next sweep
+     * pushes it further. On the full view — the only one that contains the
+     * disconnected couple — the graph grew from 3853px to 9099px as the
+     * pass count rose, purely from that drift.
+     */
+    originLeft: number
+  }
+  const rowBlocks = new Map<number, PlacedBlock[]>()
+  /**
+   * Columns claimed by multi-row group containers, so lower rows can step
+   * around them.
+   *
+   * `ownerId` is what lets stage two ask where the container actually is
+   * now. Holding only the left/right recorded during stage one left the
+   * column behind when the container moved, and a person in a lower row
+   * could then be placed inside a container that was no longer there —
+   * invisible to the diagnostic, which only looks for overlaps within one
+   * row and so never compares a person against a container two rows up.
+   */
+  const spanReservations: {
+    minRank: number; maxRank: number; left: number; right: number; ownerId: string
+  }[] = []
 
   function resolveParentAverageX(personId: string): number | undefined {
     const anchors = parentAnchorIdsByChild.get(personId)
@@ -502,18 +564,21 @@ export async function layoutFamilyGraph(
 
     let cursorX = 0
     let isFirstGroup = true
+    const rowPlacement: PlacedBlock[] = []
     for (const groupEntry of groupEntries) {
+      const groupGap = isFirstGroup ? 0 : CROSS_UNIT_GAP
       if (!isFirstGroup) cursorX += CROSS_UNIT_GAP
       let isFirstBlock = true
       for (const block of groupEntry.blocks) {
         // Siblings sit as close together as the members of one couple do;
         // the wider gap is reserved for a change of family.
+        const gapBefore = isFirstBlock ? groupGap : SAME_UNIT_GAP
         if (!isFirstBlock) cursorX += SAME_UNIT_GAP
 
         // The whole block steps around a reserved column, never part of
         // it. Testing each member separately let a container's column fall
         // between two partners and split them — which is the exact defect
-        // this phase exists to remove, arriving by a different route. A
+        // Phase 5C-11a exists to remove, arriving by a different route. A
         // block is rigid against collapsed groups too, or it is not rigid.
         const blockWidth = block.members.reduce(
           (sum, member, index) =>
@@ -522,33 +587,312 @@ export async function layoutFamilyGraph(
         )
         cursorX = skipReservedColumns(cursorX, blockWidth)
 
+        const centreOffset = new Map<string, number>()
+        const blockLeft = cursorX
         let isFirstMember = true
         for (const member of block.members) {
           if (!isFirstMember) cursorX += SAME_UNIT_GAP
           const width = widthByNodeId.get(member.id) ?? PERSON_NODE_WIDTH
           finalX.set(member.id, cursorX)
           finalCenterX.set(member.id, cursorX + width / 2)
+          centreOffset.set(member.id, cursorX + width / 2 - blockLeft)
           if (member.type === 'familyGroup' && member.data.maxRank > member.data.minRank) {
             spanReservations.push({
               minRank: member.data.minRank,
               maxRank: member.data.maxRank,
               left: cursorX,
               right: cursorX + width,
+              ownerId: member.id,
             })
           }
           cursorX += width
           isFirstMember = false
         }
+        rowPlacement.push({
+          members: block.members,
+          width: blockWidth,
+          gapBefore,
+          centreOffset,
+          left: blockLeft,
+          originLeft: blockLeft,
+        })
         isFirstBlock = false
       }
       isFirstGroup = false
     }
+    // The order this row was resolved into is frozen here. Stage two moves
+    // blocks along the row; it never reorders them and never opens one.
+    rowBlocks.set(rank, rowPlacement)
   }
+
+  refineHorizontalPlacement()
 
   return nodes.map((node) => ({
     ...node,
     position: { x: finalX.get(node.id) ?? 0, y: (ranks.get(node.id) ?? 0) * ROW_HEIGHT },
   })) as FamilyNode[]
+
+  /**
+   * Stage two — bidirectional horizontal placement, Phase 5C-11b.
+   *
+   * Stage one decides WHO goes where in a row and packs each row from
+   * zero. That is why a child could sit far from its parent even with the
+   * order correct: two rows of different widths both starting at zero have
+   * no horizontal registration with each other, and a strictly top-down
+   * pass can never move a parent toward its children — for one parent with
+   * four children, moving the parent is the whole answer.
+   *
+   * So this pass leaves the order alone and only slides blocks along their
+   * row. It alternates direction: a downward sweep pulls each block toward
+   * the family above it, an upward sweep pulls each block toward the
+   * children below it, and the two are averaged, which is the balancing
+   * idea from Brandes-Köpf without any of its machinery. Bounded
+   * iterations, no convergence test, so the cost is fixed and the result
+   * is deterministic.
+   *
+   * Every sweep ends in the same feasibility step, so ordering, minimum
+   * separation, couple rigidity and reserved columns are re-established
+   * from scratch each time rather than assumed. A block is moved as one
+   * object throughout — stage two has no way to place anything between two
+   * partners.
+   */
+  function refineHorizontalPlacement(): void {
+    const ranksAscending = sortedRanks
+    if (ranksAscending.length < 2) return
+
+    /** Where a block sits now, by the centre of one of its members. */
+    const centreOfMember = (block: PlacedBlock, id: string): number =>
+      block.left + (block.centreOffset.get(id) ?? block.width / 2)
+
+    const blockOfMember = new Map<string, PlacedBlock>()
+    for (const row of rowBlocks.values()) {
+      for (const block of row) for (const member of block.members) blockOfMember.set(member.id, block)
+    }
+
+    /**
+     * Feasible positions closest to what a sweep asked for.
+     *
+     * Fixed order plus a minimum separation is an isotonic regression once
+     * the separations are subtracted out, so pool-adjacent-violators
+     * solves it exactly in one linear pass. Blocks nobody has an opinion
+     * about carry a small weight and their current position as a target,
+     * which keeps them where the ordering put them instead of letting them
+     * drift or collapse together.
+     */
+    function settleRow(row: PlacedBlock[], desiredLeft: (number | undefined)[]): void {
+      const n = row.length
+      if (n === 0) return
+
+      // left_{i+1} - left_i must be at least this.
+      const separation: number[] = []
+      for (let i = 0; i + 1 < n; i += 1) {
+        separation.push((row[i] as PlacedBlock).width + (row[i + 1] as PlacedBlock).gapBefore)
+      }
+      const prefix: number[] = [0]
+      for (let i = 0; i + 1 < n; i += 1) {
+        prefix.push((prefix[i] as number) + (separation[i] as number))
+      }
+
+      // z must be non-decreasing, which is exactly the ordering and
+      // separation constraints rewritten.
+      const target: number[] = []
+      const weight: number[] = []
+      for (let i = 0; i < n; i += 1) {
+        const want = desiredLeft[i]
+        target.push((want ?? (row[i] as PlacedBlock).originLeft) - (prefix[i] as number))
+        weight.push(want === undefined ? UNANCHORED_WEIGHT : 1)
+      }
+
+      const pool: { value: number; weight: number; count: number }[] = []
+      for (let i = 0; i < n; i += 1) {
+        let value = target[i] as number
+        let w = weight[i] as number
+        let count = 1
+        while (pool.length > 0 && (pool[pool.length - 1] as { value: number }).value > value) {
+          const previous = pool.pop() as { value: number; weight: number; count: number }
+          const combined = previous.weight + w
+          value = combined === 0
+            ? (previous.value + value) / 2
+            : (previous.value * previous.weight + value * w) / combined
+          w = combined
+          count += previous.count
+        }
+        pool.push({ value, weight: w, count })
+      }
+
+      let index = 0
+      for (const group of pool) {
+        for (let k = 0; k < group.count; k += 1) {
+          ;(row[index] as PlacedBlock).left = group.value + (prefix[index] as number)
+          index += 1
+        }
+      }
+    }
+
+    /**
+     * Reserved columns, re-cleared after the row has moved.
+     *
+     * A collapsed container owns a column across several rows, and that is
+     * an absolute position rather than an ordering constraint, so it
+     * cannot go into the isotonic solve. Clearing it afterwards can only
+     * push a block to the right, which preserves both the order and the
+     * separations the solve just established.
+     */
+    function clearReservations(row: PlacedBlock[], rank: number): void {
+      // Recomputed from where the container is NOW, not from where stage
+      // one first put it.
+      const bands = spanReservations
+        .filter((reservation) => reservation.minRank < rank && reservation.maxRank >= rank)
+        .map((reservation) => {
+          const owner = blockOfMember.get(reservation.ownerId)
+          if (!owner) return { left: reservation.left, right: reservation.right }
+          const width = widthByNodeId.get(reservation.ownerId) ?? PERSON_NODE_WIDTH
+          const centre = owner.left + (owner.centreOffset.get(reservation.ownerId) ?? owner.width / 2)
+          return { left: centre - width / 2, right: centre + width / 2 }
+        })
+
+      let minimumLeft = Number.NEGATIVE_INFINITY
+      let index = 0
+      for (const block of row) {
+        if (block.left < minimumLeft) block.left = minimumLeft
+        let moved = true
+        while (moved) {
+          moved = false
+          for (const band of bands) {
+            if (block.left < band.right && block.left + block.width > band.left) {
+              block.left = band.right + SAME_UNIT_GAP
+              moved = true
+            }
+          }
+        }
+        // Carry the block's own separation forward, not just its width —
+        // otherwise clearing a column could leave two blocks touching.
+        const next = row[index + 1]
+        minimumLeft = block.left + block.width + (next ? next.gapBefore : 0)
+        index += 1
+      }
+    }
+
+    /** Writes block positions back out to the nodes. */
+    function commit(): void {
+      for (const row of rowBlocks.values()) {
+        for (const block of row) {
+          for (const member of block.members) {
+            const width = widthByNodeId.get(member.id) ?? PERSON_NODE_WIDTH
+            const centre = block.left + (block.centreOffset.get(member.id) ?? width / 2)
+            finalX.set(member.id, centre - width / 2)
+            finalCenterX.set(member.id, centre)
+          }
+        }
+      }
+    }
+
+    /**
+     * What a block would have to do to put an anchored member exactly on
+     * the thing it should line up with.
+     *
+     * Averaged over every member with an opinion, and expressed as a left
+     * edge, so the block keeps its shape and simply slides. A block where
+     * nobody has an opinion returns undefined and settleRow leaves it
+     * roughly where it was.
+     */
+    function desiredLeftFor(
+      block: PlacedBlock,
+      wantedCentreOf: (memberId: string) => number | undefined,
+    ): number | undefined {
+      const wants: number[] = []
+      for (const member of block.members) {
+        const wanted = wantedCentreOf(member.id)
+        if (wanted === undefined) continue
+        wants.push(wanted - (block.centreOffset.get(member.id) ?? block.width / 2))
+      }
+      if (wants.length === 0) return undefined
+      return wants.reduce((sum, v) => sum + v, 0) / wants.length
+    }
+
+    // Children by parent-edge source, so the upward sweep can ask where a
+    // person's children ended up. Built once; the graph never changes.
+    const childIdsBySource = new Map<string, string[]>()
+    for (const edge of edges) {
+      if (edge.data?.kind !== 'parentChild') continue
+      const list = childIdsBySource.get(edge.source) ?? []
+      if (!list.includes(edge.target)) list.push(edge.target)
+      childIdsBySource.set(edge.source, list)
+    }
+
+    const centreOfNode = (id: string): number | undefined => {
+      const block = blockOfMember.get(id)
+      if (!block) return undefined
+      return centreOfMember(block, id)
+    }
+
+    /**
+     * One settling pass over every row, with each block pulled toward its
+     * parents and its children at once.
+     *
+     * Deliberately ONE target rather than a downward sweep followed by an
+     * upward one. Run as two sweeps, whichever went last simply overwrote
+     * the other: measured on these fixtures, down-then-up produced exactly
+     * the same drawing as up alone. And up alone was the worse of the two
+     * — it widened the graph by 23% and made the mean parent-child
+     * distance in My Family worse than the downward sweep had already made
+     * it. Blending the two ends of the same edge into a single target is
+     * what makes this bidirectional rather than alternately one-directional.
+     *
+     * Rows are still visited top to bottom, so the parent side of the
+     * target is current within a pass while the child side is one pass
+     * behind. That is what the repeat count is for.
+     */
+    function sweepCombined(): void {
+      for (const rank of ranksAscending) {
+        const row = rowBlocks.get(rank)
+        if (!row || row.length === 0) continue
+
+        const desired = row.map((block) => {
+          const fromParents = desiredLeftFor(block, (memberId) => {
+            const anchors = parentAnchorIdsByChild.get(memberId) ?? []
+            const centres = anchors
+              .map((anchorId) => centreOfNode(anchorId))
+              .filter((x): x is number => x !== undefined)
+            if (centres.length === 0) return undefined
+            return centres.reduce((sum, x) => sum + x, 0) / centres.length
+          })
+          const fromChildren = desiredLeftFor(block, (memberId) => {
+            // A parent belongs over the middle of its children. This is
+            // the half a strictly top-down pass cannot do at all: for one
+            // parent with four children, moving the parent is the answer.
+            const children = childIdsBySource.get(memberId) ?? []
+            const centres = children
+              .map((childId) => centreOfNode(childId))
+              .filter((x): x is number => x !== undefined)
+            if (centres.length === 0) return undefined
+            return centres.reduce((sum, x) => sum + x, 0) / centres.length
+          })
+
+          if (fromParents === undefined) return fromChildren
+          if (fromChildren === undefined) return fromParents
+          // An edge pulls equally from both ends; there is no reason for a
+          // parent to outrank a child or the reverse.
+          return (fromParents + fromChildren) / 2
+        })
+
+        settleRow(row, desired)
+        clearReservations(row, rank)
+      }
+    }
+
+    for (let pass = 0; pass < REFINEMENT_PASSES; pass += 1) sweepCombined()
+
+    // Nothing downstream expects negative coordinates, and keeping the
+    // graph anchored at zero makes runs comparable.
+    let leftmost = Number.POSITIVE_INFINITY
+    for (const row of rowBlocks.values()) for (const block of row) leftmost = Math.min(leftmost, block.left)
+    if (Number.isFinite(leftmost) && leftmost !== 0) {
+      for (const row of rowBlocks.values()) for (const block of row) block.left -= leftmost
+    }
+
+    commit()
+  }
 }
 
 export const PERSON_NODE_SIZE = { width: PERSON_NODE_WIDTH, height: PERSON_NODE_HEIGHT }

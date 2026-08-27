@@ -50,7 +50,7 @@ import { computeRanks } from '../src/features/tree-view/rank'
 import { projectFamilyGroups } from '../src/features/tree-view/groupProjection'
 import { projectFamilyTreeView } from '../src/features/tree-view/viewProjection'
 import type { ImplementedView } from '../src/features/tree-view/viewTypes'
-import { layoutFamilyGraph, nodeWidth, PERSON_NODE_SIZE } from '../src/features/tree-view/layout'
+import { familyGroupNodeHeight, layoutFamilyGraph, nodeWidth, PERSON_NODE_SIZE } from '../src/features/tree-view/layout'
 import type { FamilyNode } from '../src/features/tree-view/types'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, ParentRelationship, Person, Union } from '../src/types'
 
@@ -312,6 +312,17 @@ interface Metrics {
    * families above it.
    */
   orderInversions: number
+  /**
+   * People drawn inside a collapsed group's column — Phase 5C-11b.
+   *
+   * A collapsed container is one node that reaches down through every
+   * generation its members occupy, so a person two rows below can be
+   * placed inside it. `overlaps` cannot see that: it compares nodes within
+   * a single row, and the container and the person it swallows are never
+   * in the same row. This found a real defect that had otherwise gone
+   * unnoticed, so it stays.
+   */
+  containerIntrusions: number
 }
 
 /** A couple placed side by side spans 214px; a little slack for rounding. */
@@ -455,6 +466,24 @@ function measure(
     }
   }
 
+  // Anyone standing inside a multi-row container's column.
+  let containerIntrusions = 0
+  for (const container of nodes) {
+    if (container.type !== 'familyGroup') continue
+    const top = container.position.y
+    const bottom = top + familyGroupNodeHeight(container.data.minRank, container.data.maxRank)
+    const left = container.position.x
+    const right = left + nodeWidth(container)
+    for (const other of nodes) {
+      if (other.id === container.id || other.type === 'familyGroup') continue
+      const oTop = other.position.y
+      const oBottom = oTop + PERSON_NODE_SIZE.height
+      const oLeft = other.position.x
+      const oRight = oLeft + nodeWidth(other)
+      if (oLeft < right && left < oRight && oTop < bottom && top < oBottom) containerIntrusions += 1
+    }
+  }
+
   const lefts = nodes.map((n) => n.position.x)
   const rights = nodes.map((n) => n.position.x + nodeWidth(n))
 
@@ -475,6 +504,7 @@ function measure(
       : 0,
     tornCouples: unionSpans.filter((v) => v > TORN_COUPLE_PX).length,
     orderInversions,
+    containerIntrusions,
   }
 }
 
