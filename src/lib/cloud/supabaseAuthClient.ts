@@ -1,50 +1,17 @@
 import type { AuthAccount, AuthClient } from './authClient'
-import { readCloudConfig } from './cloudConfig'
+import { getSupabaseClient } from './supabaseClient'
+import type { SupabaseUserLike } from './supabaseClient'
 
 /**
  * Google sign-in through Supabase — Milestone 1.
  *
- * The only file in the application that names Supabase. Everything else
- * speaks in AuthAccount and AuthClient, so replacing the provider would
- * mean replacing this file and nothing above it.
+ * Everything above this file speaks in AuthAccount and AuthClient, so
+ * replacing the provider would mean replacing this file and nothing else.
  *
- *
- * LOADED ONLY IF USED
- * ───────────────────
- * The SDK is imported dynamically rather than at the top of the module.
- * A build with no cloud configured never reaches this code, so it never
- * downloads the client — which matters: the application bundle is already
- * over two megabytes and the offline, signed-out experience is the one
- * this project promises will always work. A signed-out visitor should not
- * pay for an authentication library they are not being offered.
+ * The connection itself comes from supabaseClient.ts, which this tab
+ * shares with the cloud tree store — two clients would mean two session
+ * listeners racing over one stored session.
  */
-
-/** The provider's own shape, narrowed to what this application uses. */
-interface SupabaseUserLike {
-  id: string
-  email?: string | null
-  user_metadata?: { full_name?: string | null; name?: string | null } | null
-}
-
-interface SupabaseSessionLike {
-  user: SupabaseUserLike
-}
-
-interface SupabaseAuthLike {
-  getSession(): Promise<{ data: { session: SupabaseSessionLike | null } }>
-  onAuthStateChange(
-    callback: (event: string, session: SupabaseSessionLike | null) => void,
-  ): { data: { subscription: { unsubscribe: () => void } } }
-  signInWithOAuth(options: {
-    provider: 'google'
-    options?: { redirectTo?: string; scopes?: string }
-  }): Promise<{ error: { message: string } | null }>
-  signOut(): Promise<{ error: { message: string } | null }>
-}
-
-interface SupabaseClientLike {
-  auth: SupabaseAuthLike
-}
 
 /**
  * Identity only.
@@ -66,42 +33,8 @@ function toAccount(user: SupabaseUserLike): AuthAccount {
 }
 
 export class SupabaseAuthClient implements AuthClient {
-  #client: Promise<SupabaseClientLike> | null = null
-
-  /**
-   * One client, created on first use and reused. Constructing two would
-   * give the tab two session listeners and two refresh timers racing over
-   * the same stored token.
-   */
-  #connect(): Promise<SupabaseClientLike> {
-    if (this.#client) return this.#client
-
-    const config = readCloudConfig()
-    if (!config) {
-      // Constructing this class at all without configuration is a
-      // programming error, not a user-facing condition — the application
-      // chooses NoAuthClient in that case.
-      throw new Error('SupabaseAuthClient requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
-    }
-
-    this.#client = import('@supabase/supabase-js').then(({ createClient }) =>
-      createClient(config.url, config.anonKey, {
-        auth: {
-          // The session survives a reload, which is what anybody expects
-          // of being signed in.
-          persistSession: true,
-          autoRefreshToken: true,
-          // The provider returns to the app with the session in the URL;
-          // this is what picks it up.
-          detectSessionInUrl: true,
-        },
-      }) as unknown as SupabaseClientLike,
-    )
-    return this.#client
-  }
-
   async getAccount(): Promise<AuthAccount | null> {
-    const client = await this.#connect()
+    const client = await getSupabaseClient()
     const { data } = await client.auth.getSession()
     return data.session ? toAccount(data.session.user) : null
   }
@@ -110,7 +43,7 @@ export class SupabaseAuthClient implements AuthClient {
     let unsubscribe: (() => void) | null = null
     let cancelled = false
 
-    void this.#connect().then((client) => {
+    void getSupabaseClient().then((client) => {
       if (cancelled) return
       const { data } = client.auth.onAuthStateChange((_event, session) => {
         listener(session ? toAccount(session.user) : null)
@@ -127,7 +60,7 @@ export class SupabaseAuthClient implements AuthClient {
   }
 
   async signInWithGoogle(): Promise<void> {
-    const client = await this.#connect()
+    const client = await getSupabaseClient()
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -142,7 +75,7 @@ export class SupabaseAuthClient implements AuthClient {
   }
 
   async signOut(): Promise<void> {
-    const client = await this.#connect()
+    const client = await getSupabaseClient()
     const { error } = await client.auth.signOut()
     if (error) throw new Error(error.message)
   }

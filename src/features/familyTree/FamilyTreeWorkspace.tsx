@@ -478,7 +478,11 @@ export function FamilyTreeWorkspace({
         )}
 
         {view.screen === 'account' && (
-          <AccountScreen onBack={() => setView({ screen: 'menu' })} />
+          <AccountScreen
+            onBack={() => setView({ screen: 'menu' })}
+            localTreeId={tree.id}
+            localTreeName={tree.name}
+          />
         )}
 
         {view.screen === 'familySwitcher' && (
