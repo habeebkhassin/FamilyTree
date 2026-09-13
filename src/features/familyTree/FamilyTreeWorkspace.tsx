@@ -324,7 +324,6 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
             collapsedGroupIds={collapsedGroupIds}
             onToggleFamilyGroup={toggleFamilyGroup}
             onSelectPerson={openProfile}
-            onBack={goHome}
             focalPersonId={focal.focalPersonId ?? undefined}
             onFocusPerson={focal.focusOn}
             focusHistory={focal.history}

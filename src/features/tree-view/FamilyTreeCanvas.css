@@ -1,10 +1,25 @@
+/*
+  The tree gets the screen — Phase 2.
+
+  Full-bleed on a phone: the padding and the rounded frame around the
+  canvas cost about 50px of width and 40px of height, which on a 390px
+  screen is a noticeable share of the family. A desktop keeps a little
+  breathing room, where there is space to spare.
+*/
 .tree-canvas {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 24px 24px;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+
+@media (min-width: 768px) {
+  .tree-canvas {
+    gap: 12px;
+    padding: 12px 16px 0;
+  }
 }
 
 /* The back link and the viewpoint trail share one row, so showing where
@@ -13,8 +28,31 @@
 .tree-canvas__header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
+  padding: 0 8px;
+  flex-wrap: wrap;
+}
+
+/* The occasional tools, pushed to the end of the row. */
+.tree-canvas__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+
+.icon-button--on {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+@media (min-width: 768px) {
+  .tree-canvas__header {
+    padding: 0;
+    gap: 12px;
+  }
 }
 
 .tree-canvas__back {
@@ -70,10 +108,46 @@
   position: relative;
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-top: 1px solid var(--border);
   overflow: hidden;
   background: var(--bg);
+}
+
+@media (min-width: 768px) {
+  .tree-canvas__viewport {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+}
+
+/*
+  React Flow's zoom buttons are for a mouse. A phone already pinches, and
+  three stacked buttons over a small canvas take more than they give.
+*/
+@media (max-width: 767px) {
+  .tree-canvas__viewport .react-flow__controls {
+    display: none;
+  }
+}
+
+.tree-canvas__viewport .react-flow__controls {
+  box-shadow: var(--shadow);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.tree-canvas__viewport .react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  fill: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+}
+
+.tree-canvas__viewport .react-flow__controls-button:hover {
+  background: var(--row-band);
+  fill: var(--text);
 }
 
 /*
@@ -156,13 +230,23 @@
  * (its members are just people), so there has to be somewhere else to
  * collapse it from — this list is that somewhere.
  */
+/* A popover on the header row, not a panel on the canvas — Phase 2. */
 .tree-canvas__groups {
-  max-width: 200px;
+  position: relative;
+}
+
+.tree-canvas__groups-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
   padding: 6px;
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-hover);
 }
 
 /* The always-visible part: on a phone this is the whole control until tapped. */

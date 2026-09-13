@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Background, Controls, Panel, ReactFlow, ReactFlowProvider, useReactFlow, useStore } from '@xyflow/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, useStore } from '@xyflow/react'
 import type { Node, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
@@ -22,6 +22,7 @@ import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth } from './layou
 import { computeRanks } from './rank'
 import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
+import { IconButton } from '../../components/AppShell'
 import { FocusBreadcrumb } from './FocusBreadcrumb'
 import { PersonInspector } from './PersonInspector'
 import type { FamilyNode } from './types'
@@ -36,7 +37,6 @@ interface FamilyTreeCanvasProps {
   collapsedGroupIds: ReadonlySet<string>
   onToggleFamilyGroup: (familyGroupId: string) => void
   onSelectPerson: (personId: string) => void
-  onBack: () => void
   /**
    * The person the tree is currently being explored from. Centers the
    * viewport on them instead of fitting everything, and gives their card
@@ -250,12 +250,21 @@ function FocalPersonCenterer({
   framingIds,
   overview,
   nodes,
+  recentreTick,
 }: {
   focalPersonId?: string
   framingIds: readonly string[]
   /** Everyone only: widen the frame to as much family as stays readable. */
   overview: boolean
   nodes: FamilyNode[]
+  /**
+   * Bumped when somebody asks to be taken back to the current person.
+   *
+   * A dependency rather than a second camera: after panning away, the
+   * frame this component already knows how to compute is exactly the one
+   * you want back, so re-running it is the whole feature.
+   */
+  recentreTick: number
 }) {
   const { fitView } = useReactFlow()
   // The pane's own width, which only something inside the provider can
@@ -323,7 +332,7 @@ function FocalPersonCenterer({
       maxZoom: 1.1,
       ...(overviewIds ? { padding: OVERVIEW_PADDING } : {}),
     })
-  }, [focalPersonId, framingIds, overviewIds, nodes, fitView])
+  }, [focalPersonId, framingIds, overviewIds, nodes, fitView, recentreTick])
 
   return null
 }
@@ -337,7 +346,6 @@ export function FamilyTreeCanvas({
   collapsedGroupIds,
   onToggleFamilyGroup,
   onSelectPerson,
-  onBack,
   focalPersonId,
   onFocusPerson,
   focusHistory,
@@ -606,14 +614,51 @@ export function FamilyTreeCanvas({
     else setInspectedPersonId(node.id)
   }
 
+  const [recentreTick, setRecentreTick] = useState(0)
+  const recentreOnFocalPerson = () => setRecentreTick((tick) => tick + 1)
+
+  /**
+   * How far out the tree may be zoomed — Phase 2.
+   *
+   * Derived rather than fixed, because one number cannot serve both
+   * screens. A floor low enough to fit a fifty-person family on a phone
+   * leaves a desktop able to zoom until the family is a smudge in the
+   * middle of an empty canvas; a floor that suits a desktop traps a phone
+   * inside one branch.
+   *
+   * So the floor is just past what it takes to see everything: the scale
+   * at which the whole family fits this viewport, with a little slack so
+   * there is somewhere to go, and never further. Falls back to React
+   * Flow's own default until the first measurement arrives.
+   */
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [viewportWidth, setViewportWidth] = useState(0)
+
+  useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setViewportWidth(entry.contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  const minZoom = useMemo(() => {
+    const people = layoutedNodes.filter((node) => node.type === 'person')
+    if (viewportWidth <= 0 || people.length === 0) return 0.5
+    const xs = people.map((node) => node.position.x)
+    const graphWidth = Math.max(...xs) - Math.min(...xs) + nodeWidth(people[0] as FamilyNode)
+    const fitsEverything = viewportWidth / graphWidth
+    // A little past "everything fits", and never further out than a tenth.
+    return Math.min(0.5, Math.max(0.1, fitsEverything * 0.8))
+  }, [layoutedNodes, viewportWidth])
+
   const inspectedPerson = inspectedPersonId ? peopleById.get(inspectedPersonId) : undefined
 
   return (
     <div className="tree-canvas">
       <div className="tree-canvas__header">
-        <button type="button" className="tree-canvas__back" onClick={onBack}>
-          ← Back to family tree
-        </button>
         <FocusBreadcrumb
           history={focusHistory}
           focalPersonId={focalPersonId ?? null}
@@ -621,6 +666,46 @@ export function FamilyTreeCanvas({
           peopleById={peopleById}
           onBack={onFocusBack}
         />
+
+        {/*
+          The occasional tools, as icons on the header row rather than
+          panels floating over the family — Phase 2. Between them they used
+          to cover both top corners of the canvas, which on a phone is a
+          large share of the tree.
+        */}
+        <div className="tree-canvas__tools">
+          {focalPersonId && (
+            <IconButton label="Centre on the current person" onClick={recentreOnFocalPerson}>
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="3.2" />
+                  <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+                </g>
+              </svg>
+            </IconButton>
+          )}
+          <IconButton
+            label={isComparing ? 'Stop comparing' : 'Compare two people'}
+            aria-pressed={isComparing}
+            className={isComparing ? 'icon-button--on' : undefined}
+            onClick={toggleComparisonMode}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <circle cx="7.5" cy="8" r="3" />
+                <circle cx="16.5" cy="8" r="3" />
+                <path d="M3 19c0-2.5 2-4.2 4.5-4.2S12 16.5 12 19M12 19c0-2.5 2-4.2 4.5-4.2S21 16.5 21 19" />
+              </g>
+            </svg>
+          </IconButton>
+          {familyGroups.length > 0 && (
+            <FamilyGroupTogglePanel
+              familyGroups={familyGroups}
+              collapsedGroupIds={collapsedGroupIds}
+              onToggle={onToggleFamilyGroup}
+            />
+          )}
+        </div>
 
         {canUseMyFamily && (
           <div className="tree-canvas__views" role="group" aria-label="Which view of the family">
@@ -668,7 +753,7 @@ export function FamilyTreeCanvas({
         </p>
       )}
 
-      <div className="tree-canvas__viewport">
+      <div className="tree-canvas__viewport" ref={viewportRef}>
         {isLayouting && layoutedNodes.length === 0 ? (
           <p className="tree-canvas__status">Laying out your family tree…</p>
         ) : (
@@ -682,36 +767,33 @@ export function FamilyTreeCanvas({
               nodesConnectable={false}
               elementsSelectable
               fitView={!focalPersonId}
+              /*
+                Far enough out to take in a whole family — Phase 2.
+
+                React Flow's default floor of 0.5 could not do it: a
+                React Flow's default floor of 0.5 could not take in a
+                whole family: fifty people are over 3200px wide, so half
+                scale still needs a 1600px window and a phone has 390.
+                The floor is now measured from the family and the screen —
+                see `minZoom` above.
+              */
+              minZoom={minZoom}
+              maxZoom={2}
               proOptions={{ hideAttribution: true }}
             >
-              <Background gap={24} />
-              <Controls showInteractive={false} />
-              <Panel position="top-left">
-                <button
-                  type="button"
-                  className={
-                    isComparing ? 'tree-canvas__compare tree-canvas__compare--on' : 'tree-canvas__compare'
-                  }
-                  aria-pressed={isComparing}
-                  onClick={toggleComparisonMode}
-                >
-                  {isComparing ? 'Comparing — pick two people' : 'Compare people'}
-                </button>
-              </Panel>
-              {familyGroups.length > 0 && (
-                <Panel position="top-right">
-                  <FamilyGroupTogglePanel
-                    familyGroups={familyGroups}
-                    collapsedGroupIds={collapsedGroupIds}
-                    onToggle={onToggleFamilyGroup}
-                  />
-                </Panel>
-              )}
+              <Background gap={28} />
+              {/*
+                Kept for a mouse, hidden on a phone by CSS: pinch already
+                zooms, and three stacked buttons over a small canvas cost
+                more than they give.
+              */}
+              <Controls showInteractive={false} showFitView={false} />
               <FocalPersonCenterer
                 focalPersonId={focalPersonId}
                 framingIds={framingIds}
                 overview={activeView === 'full'}
                 nodes={layoutedNodes}
+                recentreTick={recentreTick}
               />
             </ReactFlow>
           </ReactFlowProvider>
@@ -757,11 +839,10 @@ export function FamilyTreeCanvas({
  * tree's groups: collapse from here, and expand either from here or by
  * activating the collapsed group's node in the graph.
  *
- * The list itself is a disclosure. Left permanently open it took roughly
- * a third of the width of a 375px screen and sat on top of the tree; on a
- * phone it now starts as a single small button and opens over the canvas
- * only while in use. On a wider screen there is room to leave it open, so
- * it starts that way and stays glanceable.
+ * Phase 2 moved it off the canvas and onto the header row, where it is one
+ * icon until tapped. Left open in the corner of the tree it covered
+ * people, which on a phone is a real share of the family; a popover costs
+ * nothing until somebody wants it.
  */
 function FamilyGroupTogglePanel({
   familyGroups,
@@ -772,26 +853,35 @@ function FamilyGroupTogglePanel({
   collapsedGroupIds: ReadonlySet<string>
   onToggle: (familyGroupId: string) => void
 }) {
-  const [isOpen, setIsOpen] = useState(
-    () => !window.matchMedia('(max-width: 480px)').matches,
-  )
+  // Closed everywhere: it is a popover on the header row now, not a panel
+  // that has room to sit open.
+  const [isOpen, setIsOpen] = useState(false)
   const collapsedCount = familyGroups.filter((group) => collapsedGroupIds.has(group.id)).length
 
   return (
     <div className="tree-canvas__groups">
       <button
         type="button"
-        className="tree-canvas__groups-summary"
+        className={
+          collapsedCount > 0
+            ? 'icon-button tree-canvas__groups-trigger icon-button--on'
+            : 'icon-button tree-canvas__groups-trigger'
+        }
         aria-expanded={isOpen}
+        aria-label={
+          collapsedCount > 0
+            ? `Family Groups, ${collapsedCount} collapsed`
+            : `Family Groups, ${familyGroups.length}`
+        }
+        title="Family Groups"
         onClick={() => setIsOpen((open) => !open)}
       >
-        <span className="tree-canvas__groups-disclosure" aria-hidden="true">
-          {isOpen ? '▼' : '▶'}
-        </span>
-        <span className="tree-canvas__groups-title">Family Groups</span>
-        <span className="tree-canvas__groups-badge">
-          {collapsedCount > 0 ? `${collapsedCount} collapsed` : familyGroups.length}
-        </span>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3.5" y="4.5" width="17" height="6" rx="2" />
+            <rect x="3.5" y="13.5" width="17" height="6" rx="2" />
+          </g>
+        </svg>
       </button>
 
       {isOpen && (

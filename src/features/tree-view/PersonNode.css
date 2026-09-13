@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 160px;
   /*
     Pinned, not a minimum. layout.ts already treats every person as
@@ -13,16 +13,18 @@
     stylesheet state the contract the layout has always assumed.
   */
   height: 72px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  /* Rounder than a form control, to read as a person rather than a field. */
+  border-radius: 14px;
   box-shadow: var(--shadow);
   text-align: left;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .person-node:hover {
@@ -30,8 +32,14 @@
   box-shadow: var(--shadow-hover);
 }
 
+/*
+  Tapped, and now showing in the inspector. Quiet on purpose: it says
+  "this is the one you touched", while the focal ring says "this is who
+  the view is about". Two different claims, so two different weights.
+*/
 .person-node--selected {
   border-color: var(--accent);
+  background: var(--accent-bg);
 }
 
 /* Picked as one of the two people being compared. */
