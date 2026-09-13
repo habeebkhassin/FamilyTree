@@ -31,13 +31,11 @@ function defaultStore(): CloudTreeStore {
 
 export function useCloudTrees({
   accountId,
-  email,
   displayName,
   store,
 }: {
   /** Null when signed out. The hook does nothing at all in that case. */
   accountId: string | null
-  email?: string | null
   displayName?: string | null
   /** Injected by tests. */
   store?: CloudTreeStore
@@ -60,14 +58,14 @@ export function useCloudTrees({
       // The profile is created the first time this account touches the
       // cloud rather than when it signs in, so signing in alone writes
       // nothing anywhere.
-      await cloud.ensureProfile(email ?? null, displayName ?? null)
+      await cloud.ensureProfile(displayName ?? null)
       setTrees(await cloud.listTrees())
       setStatus('ready')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not reach your account.')
       setStatus('error')
     }
-  }, [cloud, accountId, email, displayName])
+  }, [cloud, accountId, displayName])
 
   useEffect(() => {
     void load()

@@ -79,7 +79,9 @@ const asAdmin = (sql: string, params: unknown[] = []) => db.query(sql, params)
 before(async () => {
   db = new PGlite()
   await db.exec(SUPABASE_SHIM)
-  await db.exec(readFileSync('supabase/migrations/0001_cloud_trees.sql', 'utf8'))
+  for (const file of ['0001_cloud_trees.sql', '0002_change_events.sql', '0003_sharing.sql']) {
+    await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
+  }
 
   // Three accounts exist with the provider; none has touched the cloud.
   await asAdmin(`insert into auth.users (id, email) values ($1,'a@example.com'),($2,'b@example.com'),($3,'c@example.com')`, [A, B, C])
@@ -102,14 +104,14 @@ test('an unauthenticated caller sees nothing and can do nothing', async () => {
 // ── becoming an account, and adopting a tree ────────────────────────
 
 test('a profile is created lazily, and only for the caller', async () => {
-  await asUser(A, `select public.ensure_profile('a@example.com', 'Ayesha')`)
+  await asUser(A, `select public.ensure_profile('Ayesha')`)
   const mine = await asUser<{ id: string; display_name: string }>(A, 'select id, display_name from public.profiles')
   assert.equal(mine.length, 1)
   assert.equal(mine[0]?.id, A)
   assert.equal(mine[0]?.display_name, 'Ayesha')
 
   // B has its own profile and cannot see A's.
-  await asUser(B, `select public.ensure_profile('b@example.com', 'Bilal')`)
+  await asUser(B, `select public.ensure_profile('Bilal')`)
   const seenByB = await asUser<{ id: string }>(B, 'select id from public.profiles')
   assert.deepEqual(seenByB.map((row) => row.id), [B], 'a profile is private to its owner')
 })
@@ -207,7 +209,7 @@ test('nobody can make themselves a member, which is the whole point', async () =
 // ── roles ───────────────────────────────────────────────────────────
 
 test('an editor can write and a viewer cannot', async () => {
-  await asUser(C, `select public.ensure_profile('c@example.com', 'Chidi')`)
+  await asUser(C, `select public.ensure_profile('Chidi')`)
 
   // Granted out of band: this milestone has no sharing flow, and the
   // point here is the policy, not the path that creates the row.

@@ -1,0 +1,77 @@
+.share-member {
+  border-bottom: 1px solid var(--border);
+}
+
+.share-member:last-child {
+  border-bottom: none;
+}
+
+/*
+  The controls sit under the person they act on, not beside their name.
+  Beside it they competed with the name for the width a phone has, and
+  "Remove" is not something that should be easy to hit by accident while
+  reading a list of relatives.
+*/
+.share-member__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px 12px 48px;
+}
+
+.share-member__action {
+  min-height: 36px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.share-member__action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.share-member__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.share-member__action--remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.share-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+}
+
+.share-roles__legend {
+  padding: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* An invitation waiting for this account. */
+.invite-card {
+  padding: 4px 4px 0;
+}
+
+.invite-card__actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 4px 4px;
+}
+
+.invite-card__actions button {
+  flex: 1;
+}

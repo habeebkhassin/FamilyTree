@@ -43,10 +43,13 @@ async function rows<T>(client: SupabaseLike, table: string, treeId: string, what
 }
 
 export class SupabaseCloudTreeStore implements CloudTreeStore {
-  async ensureProfile(email: string | null, displayName: string | null): Promise<void> {
+  async ensureProfile(displayName: string | null): Promise<void> {
     const client = await getSupabaseClient()
+    // The address is deliberately not sent. The server takes it from the
+    // verified provider identity; anything this client claimed would be
+    // a way to be somebody else.
     unwrap(
-      await client.rpc('ensure_profile', { p_email: email, p_display_name: displayName }),
+      await client.rpc('ensure_profile', { p_display_name: displayName }),
       'Could not set up your account',
     )
   }

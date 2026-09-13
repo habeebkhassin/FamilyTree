@@ -24,12 +24,12 @@ import { NullRemoteAdapter } from '../sync/remoteAdapter'
 /** A cloud that records what it was asked to do, and can be told to fail. */
 class FakeCloud implements CloudTreeStore {
   adopted: AdoptableTree[] = []
-  profiles: { email: string | null; displayName: string | null }[] = []
+  profiles: (string | null)[] = []
   trees: CloudTreeSummary[] = []
   failAdoptWith: string | null = null
 
-  async ensureProfile(email: string | null, displayName: string | null): Promise<void> {
-    this.profiles.push({ email, displayName })
+  async ensureProfile(displayName: string | null): Promise<void> {
+    this.profiles.push(displayName)
   }
 
   async listTrees(): Promise<CloudTreeSummary[]> {
@@ -80,7 +80,7 @@ beforeEach(async () => {
 test('with no cloud, nothing is listed and saving is refused rather than faked', async () => {
   const store = new NoCloudTreeStore()
   assert.deepEqual(await store.listTrees(), [])
-  await store.ensureProfile(null, null) // a no-op, not a failure
+  await store.ensureProfile(null) // a no-op, not a failure
   await assert.rejects(() => store.adopt(), /no cloud configured/i)
   await assert.rejects(() => store.fetchTree(), /no cloud configured/i)
 })

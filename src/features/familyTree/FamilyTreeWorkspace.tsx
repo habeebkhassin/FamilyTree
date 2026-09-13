@@ -7,6 +7,7 @@ import { FamilyGroupForm } from '../familyGroups/FamilyGroupForm'
 import type { FamilyGroupFormValues } from '../familyGroups/FamilyGroupForm'
 import { FamilyGroupsOverview } from '../familyGroups/FamilyGroupsOverview'
 import { AccountScreen } from '../auth/AccountScreen'
+import { ShareScreen } from '../auth/ShareScreen'
 import { useAuth } from '../auth/useAuth'
 import { LocalActorBadge } from '../identity/LocalActorBadge'
 import { usePolicy } from '../policy/usePolicy'
@@ -74,6 +75,8 @@ type View =
   | { screen: 'familySwitcher' }
   /** Signing in and out. Reached from More; absent with no cloud. */
   | { screen: 'account' }
+  /** Who this family is shared with. Reached from Account. */
+  | { screen: 'share' }
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -218,7 +221,8 @@ export function FamilyTreeWorkspace({
           view.screen === 'editFamilyGroup' ||
           view.screen === 'familyGroupDetail' ||
           view.screen === 'familySwitcher' ||
-          view.screen === 'account'
+          view.screen === 'account' ||
+          view.screen === 'share'
         ? 'more'
         : 'people'
 
@@ -245,7 +249,8 @@ export function FamilyTreeWorkspace({
     view.screen === 'viewOptions' ||
     view.screen === 'settings' ||
     view.screen === 'familySwitcher' ||
-    view.screen === 'account'
+    view.screen === 'account' ||
+    view.screen === 'share'
 
   function navigate(next: Destination) {
     // Clears any stale relationship error on the way out, which is what
@@ -480,8 +485,19 @@ export function FamilyTreeWorkspace({
         {view.screen === 'account' && (
           <AccountScreen
             onBack={() => setView({ screen: 'menu' })}
+            onOpenShare={() => setView({ screen: 'share' })}
             localTreeId={tree.id}
             localTreeName={tree.name}
+          />
+        )}
+
+        {view.screen === 'share' && (
+          <ShareScreen
+            familyTreeId={tree.id}
+            familyTreeName={tree.name}
+            accountId={auth.state.status === 'signedIn' ? auth.state.account.id : null}
+            isCloudTree
+            onBack={() => setView({ screen: 'account' })}
           />
         )}
 

@@ -5,8 +5,10 @@ import { Icon } from '../../components/icons'
 import { useAuth } from './useAuth'
 import { useCloudTrees } from './useCloudTrees'
 import { useSync } from './useSync'
+import { useSharing } from './useSharing'
 import type { CloudTreeStore } from '../../lib/cloud/cloudTrees'
 import './AccountScreen.css'
+import './ShareScreen.css'
 
 /**
  * Signing in, and signing out — Milestone 1.
@@ -22,12 +24,14 @@ import './AccountScreen.css'
  */
 export function AccountScreen({
   onBack,
+  onOpenShare,
   localTreeId,
   localTreeName,
   /** Injected by tests; production uses the configured store. */
   cloudStore,
 }: {
   onBack: () => void
+  onOpenShare: () => void
   /** The family currently open, which is the one that can be saved. */
   localTreeId: string
   localTreeName: string
@@ -37,7 +41,6 @@ export function AccountScreen({
   const accountId = state.status === 'signedIn' ? state.account.id : null
   const cloud = useCloudTrees({
     accountId,
-    email: state.status === 'signedIn' ? state.account.email : null,
     displayName: state.status === 'signedIn' ? state.account.displayName : null,
     ...(cloudStore ? { store: cloudStore } : {}),
   })
@@ -49,6 +52,16 @@ export function AccountScreen({
 
   // Only a tree that is actually in the account has anything to sync.
   const sync = useSync({ familyTreeId: localTreeId, isCloudTree: isAdopted })
+
+  // Invitations are worth knowing about whether or not the tree currently
+  // open is in the cloud — somebody may be waiting to join a family that
+  // is not on this device at all yet.
+  const sharing = useSharing({
+    familyTreeId: localTreeId,
+    accountId,
+    isCloudTree: isAdopted,
+    onTreeJoined: () => void cloud.refresh(),
+  })
 
   return (
     <>
@@ -118,6 +131,40 @@ export function AccountScreen({
                 )}
               </Section>
 
+              {/*
+                Somebody is waiting to be let into a family. That is the
+                first thing worth seeing here, so it is the first thing on
+                the screen.
+              */}
+              {sharing.incoming.length > 0 && (
+                <Section title="You have been invited" collapsible={false}>
+                  {sharing.incoming.map((invitation) => (
+                    <div key={invitation.id} className="invite-card">
+                      <DetailRow
+                        icon={Icon.people({ size: 20 })}
+                        label={
+                          invitation.invitedByName
+                            ? `From ${invitation.invitedByName}`
+                            : invitation.role === 'editor'
+                              ? 'You can edit'
+                              : 'You can view'
+                        }
+                        value={invitation.familyTreeName}
+                      />
+                      <div className="invite-card__actions">
+                        <Button onClick={() => void sharing.accept(invitation)}>Accept</Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void sharing.decline(invitation.id)}
+                        >
+                          Decline
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </Section>
+              )}
+
               <Section title="In your account" collapsible={false}>
                 {cloud.status === 'loading' && <p className="account__body">Checking…</p>}
 
@@ -138,7 +185,13 @@ export function AccountScreen({
                   <DetailRow
                     key={tree.id}
                     icon={Icon.cloud({ size: 20 })}
-                    label={tree.role === 'owner' ? 'Saved to your account' : `Shared with you · ${tree.role}`}
+                    label={
+                      tree.role === 'owner'
+                        ? 'Yours'
+                        : tree.role === 'editor'
+                          ? 'Shared with you, and you can edit'
+                          : 'Shared with you, to view'
+                    }
                     value={tree.name}
                   />
                 ))}
@@ -169,6 +222,14 @@ export function AccountScreen({
                   />
                 )}
               </Section>
+
+              {isAdopted && (
+                <div className="account__action">
+                  <Button variant="secondary" onClick={onOpenShare}>
+                    Share this family
+                  </Button>
+                </div>
+              )}
 
               {isAdopted && sync.status !== 'syncing' && (
                 <div className="account__action">

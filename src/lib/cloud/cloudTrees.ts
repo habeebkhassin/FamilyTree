@@ -49,8 +49,15 @@ export interface CloudTreeContents {
 export type AdoptableTree = CloudTreeContents
 
 export interface CloudTreeStore {
-  /** Make sure this account has a profile. Safe to call repeatedly. */
-  ensureProfile(email: string | null, displayName: string | null): Promise<void>
+  /**
+   * Make sure this account has a profile. Safe to call repeatedly.
+   *
+   * No email: the address is identity, and identity comes from the
+   * provider. The server reads it from auth.users, so a client cannot
+   * assert one — which matters now that an email decides who an
+   * invitation belongs to.
+   */
+  ensureProfile(displayName: string | null): Promise<void>
   /** Trees this account can reach. Empty is a normal answer. */
   listTrees(): Promise<CloudTreeSummary[]>
   /** Save a local tree to the account. Returns the id it kept. */
@@ -68,7 +75,7 @@ export interface CloudTreeStore {
  * one.
  */
 export class NoCloudTreeStore implements CloudTreeStore {
-  async ensureProfile(_email: string | null, _displayName: string | null): Promise<void> {
+  async ensureProfile(_displayName: string | null): Promise<void> {
     // Nothing to ensure. Not an error: a caller tidying up on startup
     // should not have to special-case having no cloud.
   }

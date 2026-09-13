@@ -110,12 +110,13 @@ const push = (uid: string, events: unknown[]) =>
 before(async () => {
   db = new PGlite()
   await db.exec(SUPABASE_SHIM)
-  await db.exec(readFileSync('supabase/migrations/0001_cloud_trees.sql', 'utf8'))
-  await db.exec(readFileSync('supabase/migrations/0002_change_events.sql', 'utf8'))
+  for (const file of ['0001_cloud_trees.sql', '0002_change_events.sql', '0003_sharing.sql']) {
+    await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
+  }
 
   await db.query(`insert into auth.users (id, email) values ($1,'a@example.com'),($2,'b@example.com')`, [A, B])
-  await asUser(A, `select public.ensure_profile('a@example.com','Ayesha')`)
-  await asUser(B, `select public.ensure_profile('b@example.com','Bilal')`)
+  await asUser(A, `select public.ensure_profile('Ayesha')`)
+  await asUser(B, `select public.ensure_profile('Bilal')`)
   await asUser(A, `select public.adopt_family_tree($1::jsonb)`, [
     JSON.stringify({
       familyTree: { id: TREE, name: 'Okafor Family', createdAt: AT, updatedAt: AT },
