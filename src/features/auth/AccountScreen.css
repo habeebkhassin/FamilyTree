@@ -1,0 +1,43 @@
+.account__body {
+  margin: 0;
+  padding: 4px 4px 8px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/*
+  The sentence somebody about to sign in most needs. Quiet, but not
+  hidden: it is the answer to "what happens to my family tree".
+*/
+.account__note {
+  margin: 0;
+  padding: 4px 4px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account__action {
+  display: flex;
+  padding: 16px 4px 8px;
+}
+
+.account__action button {
+  width: 100%;
+}
+
+.account__status {
+  margin: 16px 4px;
+  color: var(--text-secondary);
+}
+
+.account__error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--accent-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 14px;
+}

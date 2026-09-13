@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local cloud configuration. `.env.example` documents the shape; the real
+# values are never committed.
+.env
+.env.*
+!.env.example

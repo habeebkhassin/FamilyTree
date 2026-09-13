@@ -11,6 +11,7 @@
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "@xyflow/react": "^12.11.2",
     "dexie": "^4.4.4",
     "elkjs": "^0.12.0",

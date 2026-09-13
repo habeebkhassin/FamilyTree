@@ -6,6 +6,8 @@ import type { FamilyGroupMembership } from '../familyGroups/FamilyGroupDetail'
 import { FamilyGroupForm } from '../familyGroups/FamilyGroupForm'
 import type { FamilyGroupFormValues } from '../familyGroups/FamilyGroupForm'
 import { FamilyGroupsOverview } from '../familyGroups/FamilyGroupsOverview'
+import { AccountScreen } from '../auth/AccountScreen'
+import { useAuth } from '../auth/useAuth'
 import { LocalActorBadge } from '../identity/LocalActorBadge'
 import { usePolicy } from '../policy/usePolicy'
 import { useFamilyGroups } from '../familyGroups/useFamilyGroups'
@@ -70,6 +72,8 @@ type View =
   | { screen: 'viewOptions' }
   /** Which of the user's families to look at. */
   | { screen: 'familySwitcher' }
+  /** Signing in and out. Reached from More; absent with no cloud. */
+  | { screen: 'account' }
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -99,6 +103,8 @@ export function FamilyTreeWorkspace({
   // The one place the interface consults the policy engine. Components
   // receive decisions; none of them reason about roles themselves.
   const policy = usePolicy(tree.id)
+  // One subscription, held by the provider; this is only a read.
+  const auth = useAuth()
   // The viewpoint lives here rather than in the canvas so the trail
   // survives stepping into a profile and back.
   const focal = useFocalPerson({
@@ -211,7 +217,8 @@ export function FamilyTreeWorkspace({
           view.screen === 'createFamilyGroup' ||
           view.screen === 'editFamilyGroup' ||
           view.screen === 'familyGroupDetail' ||
-          view.screen === 'familySwitcher'
+          view.screen === 'familySwitcher' ||
+          view.screen === 'account'
         ? 'more'
         : 'people'
 
@@ -237,7 +244,8 @@ export function FamilyTreeWorkspace({
     view.screen === 'menu' ||
     view.screen === 'viewOptions' ||
     view.screen === 'settings' ||
-    view.screen === 'familySwitcher'
+    view.screen === 'familySwitcher' ||
+    view.screen === 'account'
 
   function navigate(next: Destination) {
     // Clears any stale relationship error on the way out, which is what
@@ -458,7 +466,19 @@ export function FamilyTreeWorkspace({
             onExport={() => void handleExport()}
             onOpenIdentity={openSettings}
             onSwitchFamily={canSwitchFamily ? () => setView({ screen: 'familySwitcher' }) : undefined}
+            onOpenAccount={
+              auth.isAvailable ? () => setView({ screen: 'account' }) : undefined
+            }
+            accountSummary={
+              auth.state.status === 'signedIn'
+                ? `Signed in as ${auth.state.account.email ?? auth.state.account.displayName ?? 'your Google account'}`
+                : undefined
+            }
           />
+        )}
+
+        {view.screen === 'account' && (
+          <AccountScreen onBack={() => setView({ screen: 'menu' })} />
         )}
 
         {view.screen === 'familySwitcher' && (

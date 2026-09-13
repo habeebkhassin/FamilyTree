@@ -23,6 +23,8 @@ export function MenuScreen({
   onExport,
   onOpenIdentity,
   onSwitchFamily,
+  onOpenAccount,
+  accountSummary,
 }: {
   treeName: string
   onAddPerson: () => void
@@ -32,6 +34,14 @@ export function MenuScreen({
   onOpenIdentity: () => void
   /** Absent when this device holds only one family. */
   onSwitchFamily?: () => void
+  /**
+   * Absent when this copy of FamilyTree has no cloud configured. A row
+   * offering to sign in to nothing would be exactly the dead end this
+   * menu has always refused to carry.
+   */
+  onOpenAccount?: () => void
+  /** What the account row says underneath — an email, or an invitation. */
+  accountSummary?: string
 }) {
   return (
     <>
@@ -74,6 +84,14 @@ export function MenuScreen({
               description="The name your changes are recorded under"
               onClick={onOpenIdentity}
             />
+            {onOpenAccount && (
+              <MenuRow
+                icon={Icon.cloud()}
+                label="Account"
+                description={accountSummary ?? 'Sign in to use FamilyTree on your other devices'}
+                onClick={onOpenAccount}
+              />
+            )}
             {/* Only when there is another family to switch to. */}
             {onSwitchFamily && (
               <MenuRow

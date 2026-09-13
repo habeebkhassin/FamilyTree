@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AuthProvider } from './features/auth/AuthProvider'
 import { WelcomeScreen } from './features/familyTree/WelcomeScreen'
 import { FamilyTreeWorkspace } from './features/familyTree/FamilyTreeWorkspace'
 import { LoadingScreen } from './features/familyTree/LoadingScreen'
@@ -13,7 +14,23 @@ import type { FamilyTree } from './types'
 
 type AppStatus = 'loading' | 'welcome' | 'ready'
 
+/**
+ * Sign-in state wraps the whole application — Milestone 1.
+ *
+ * Above the tree rather than inside it, because a session belongs to the
+ * device and not to whichever family is open, and because switching
+ * families remounts the workspace: holding it any lower would re-check the
+ * session every time somebody changed tree.
+ */
 function App() {
+  return (
+    <AuthProvider>
+      <FamilyTreeApp />
+    </AuthProvider>
+  )
+}
+
+function FamilyTreeApp() {
   const [status, setStatus] = useState<AppStatus>('loading')
   const [activeTree, setActiveTree] = useState<FamilyTree | null>(null)
   /**
