@@ -1,23 +1,27 @@
 import { Handle, Position } from '@xyflow/react'
 import type { NodeProps } from '@xyflow/react'
-import { Avatar } from '../../components/Avatar'
+import { PersonPhoto } from '../../components/PersonPhoto'
+import { formatNodeMeta } from '../people/personDisplay'
 import type { PersonNode as PersonNodeType } from './types'
 import './PersonNode.css'
 
-function formatNodeYears(birthDate?: string, deathDate?: string): string | null {
-  const birthYear = birthDate ? new Date(birthDate).getFullYear() : null
-  const deathYear = deathDate ? new Date(deathDate).getFullYear() : null
-
-  if (birthYear && deathYear) return `${birthYear} – ${deathYear}`
-  if (birthYear) return `${birthYear} –`
-  if (deathYear) return `– ${deathYear}`
-  return null
-}
-
+/**
+ * A person, drawn as a portrait above a name.
+ *
+ * The card this replaces was horizontal — a small round avatar beside two
+ * lines of text — which made the photograph an icon. Here the portrait is
+ * the largest thing on the card and the first thing read, which is how
+ * people actually recognise their relatives: by face before name.
+ *
+ * Everything else is deliberately thin. A tree card answers "who is
+ * this?" and nothing more; dates, places and notes belong on the profile,
+ * where there is room to read them.
+ */
 export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   const { person } = data
   const fullName = [person.firstName, person.lastName].filter(Boolean).join(' ')
-  const years = formatNodeYears(person.birthDate, person.deathDate)
+  const meta = formatNodeMeta(person)
+
   // Injected at render time while comparing two people — the graph itself
   // has no notion of a comparison, so this never reaches the adapter.
   const comparisonRole = typeof data.comparisonRole === 'string' ? data.comparisonRole : null
@@ -34,6 +38,16 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   // drawing a box around anyone.
   const inFamilyUnit = typeof data.familyUnit === 'string'
 
+  /**
+   * How many of this person's children the current view does not reach,
+   * and how to go and see them. Counted by the canvas from the real
+   * ParentLinks against what the projection left out — never a guess, and
+   * never a second relationship system.
+   */
+  const hiddenChildCount = typeof data.hiddenChildCount === 'number' ? data.hiddenChildCount : 0
+  const onRevealChildren =
+    typeof data.onRevealChildren === 'function' ? (data.onRevealChildren as () => void) : null
+
   const classes = [
     'person-node',
     `person-node--${emphasis}`,
@@ -46,42 +60,74 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
     .join(' ')
 
   return (
-    <div className={classes}>
-      <Handle type="target" position={Position.Top} />
-      {/* View options can turn photos off; the initials go with them. */}
-      {data.hidePhoto !== true && <Avatar name={fullName} size={36} />}
-      <div className="person-node__info">
-        {/* The ring is a shape, not only a colour — and this says the same
-            thing to a screen reader, which perceives neither. */}
-        {isFocal && <span className="person-node__sr-only">Currently viewing from</span>}
-        {/*
-          Two lines, because the card cannot get any wider. The name slot
-          is 84px; on a family that shares a surname, 42 of 50 full names
-          were ellipsised while every FIRST name fitted with room to spare.
-          Widening the card was measured and rejected — it is what sets a
-          couple block's width, so it widens every sibling fan-out and made
-          long parent-child edges worse, not better.
+    <div className="person-node__frame">
+      <div className={classes}>
+        <Handle type="target" position={Position.Top} />
 
-          The given name leads because it is what distinguishes one person
-          from another on this canvas; the family name sits under it,
-          quieter, because in a family tree it is usually the part everyone
-          shares. Both are still shown in full wherever they fit.
-        */}
-        <span className="person-node__name" title={fullName}>
-          {person.firstName}
-        </span>
-        {person.lastName && (
-          <span className="person-node__surname">{person.lastName}</span>
+        {/* View options can turn photos off; the initials go with them. */}
+        {data.hidePhoto !== true && (
+          <PersonPhoto person={person} size={56} className="person-node__photo" />
         )}
-        {years && <span className="person-node__years">{years}</span>}
-        {person.isPlaceholder && <span className="person-node__placeholder">Placeholder</span>}
+
+        <div className="person-node__info">
+          {/* The ring is a shape, not only a colour — and this says the
+              same thing to a screen reader, which perceives neither. */}
+          {isFocal && <span className="person-node__sr-only">Currently viewing from</span>}
+
+          {/*
+            The whole name, allowed two lines.
+
+            The previous card split it — given name large, surname small —
+            because its name slot was 84px and full names would not fit.
+            This card is 132px wide and lets the name wrap, so the split
+            buys nothing any more, and a name is one thing rather than two.
+          */}
+          <span className="person-node__name" title={fullName}>
+            {fullName}
+          </span>
+
+          {meta && (
+            <span className="person-node__meta">
+              <span aria-hidden="true">{meta.text}</span>
+              <span className="person-node__sr-only">{meta.spoken}</span>
+            </span>
+          )}
+
+          {person.isPlaceholder && <span className="person-node__placeholder">Placeholder</span>}
+        </div>
+
+        {comparisonRole && (
+          <span className="person-node__compare-badge" aria-hidden="true">
+            {comparisonRole === 'a' ? '1' : '2'}
+          </span>
+        )}
+
+        <Handle type="source" position={Position.Bottom} />
       </div>
-      {comparisonRole && (
-        <span className="person-node__compare-badge" aria-hidden="true">
-          {comparisonRole === 'a' ? '1' : '2'}
-        </span>
+
+      {/*
+        "2 more children" — the family continuing past the edge of this
+        view, said out loud instead of silently dropped. It sits in the
+        gap below the card rather than inside it, so it never competes
+        with the person, and it is only ever drawn when the count is real.
+      */}
+      {hiddenChildCount > 0 && onRevealChildren && (
+        <button
+          type="button"
+          className="person-node__more"
+          onClick={(event) => {
+            // The canvas reads a click on a person as "who is this?".
+            // This button asks a different question.
+            event.stopPropagation()
+            onRevealChildren()
+          }}
+        >
+          <span className="person-node__more-count">
+            {hiddenChildCount} more {hiddenChildCount === 1 ? 'child' : 'children'}
+          </span>
+          <span className="person-node__more-hint">Tap to view</span>
+        </button>
       )}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   )
 }

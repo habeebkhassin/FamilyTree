@@ -4,9 +4,31 @@ import type { FamilyEdge, FamilyNode } from './types'
 
 const elk = new ELK()
 
-const PERSON_NODE_WIDTH = 160
-const PERSON_NODE_HEIGHT = 72
-const JUNCTION_NODE_SIZE = 14
+/**
+ * A person's card: a portrait above a name.
+ *
+ * Narrower and taller than the card this replaces (160x72), and both
+ * numbers are load-bearing rather than taste.
+ *
+ * Width sets how wide a couple block is, and therefore how far a row of
+ * siblings spreads and how long the edges reaching down to them must be.
+ * Coming DOWN from 160 was measured rather than assumed — see the
+ * diagnostic numbers recorded with this change.
+ *
+ * Height is the portrait, plus a name that may wrap to two lines, plus
+ * the meta line, plus padding. LAYER_SPACING comes down so the row pitch
+ * does not grow by the full difference, while still leaving a clear gap
+ * beneath each card for the "more children" affordance to sit in without
+ * touching the row below.
+ */
+const PERSON_NODE_WIDTH = 132
+const PERSON_NODE_HEIGHT = 148
+/**
+ * The marriage marker is a glyph to be read now, not a pin-prick, so it
+ * is sized to be seen. It still sits BETWEEN two partners rather than in
+ * the row's flow, so widening it does not widen a couple block.
+ */
+const JUNCTION_NODE_SIZE = 30
 /**
  * Wider than a person card (it holds a name plus a meta line), but
  * deliberately the SAME height — row geometry, and therefore the
@@ -14,7 +36,7 @@ const JUNCTION_NODE_SIZE = 14
  * is collapsed or not.
  */
 const FAMILY_GROUP_NODE_WIDTH = 200
-const LAYER_SPACING = 90
+const LAYER_SPACING = 76
 const ROW_HEIGHT = PERSON_NODE_HEIGHT + LAYER_SPACING
 
 /** Node types are sized explicitly — a type this doesn't know about would otherwise silently inherit person dimensions. */

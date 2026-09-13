@@ -1,146 +1,35 @@
 /*
-  The tree gets the screen — Phase 2.
+  The family tree page.
 
-  Full-bleed on a phone: the padding and the rounded frame around the
-  canvas cost about 50px of width and 40px of height, which on a 390px
-  screen is a noticeable share of the family. A desktop keeps a little
-  breathing room, where there is space to spare.
+  The tree is the content of this screen, so the tree gets the screen.
+  Everything that used to sit above it — a focus trail, three icon
+  buttons and a row of view names — is either gone, moved into the header
+  menu, or now floats over the canvas at an edge and only when it has
+  something to say. Nothing is stacked above the family any more.
 */
 .tree-canvas {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 0 0;
+  position: relative;
+  /* Full bleed on a phone. A rounded frame and its padding cost about
+     50px of width and 40px of height, which on a 390px screen is a real
+     share of the family. */
+  padding: 0;
 }
 
 @media (min-width: 768px) {
   .tree-canvas {
-    gap: 12px;
+    /* A desktop has room to spare, so the canvas gets a little. */
     padding: 12px 16px 0;
   }
-}
-
-/* The back link and the viewpoint trail share one row, so showing where
-   the view has been costs no vertical space — the axis a phone has least
-   of. */
-.tree-canvas__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0 8px;
-  flex-wrap: wrap;
-}
-
-/* What the tree is showing, and a way to change it. */
-.tree-canvas__view-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 8px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 14px;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-.tree-canvas__view-button:hover {
-  border-color: var(--accent);
-}
-
-.tree-canvas__view-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.tree-canvas__view-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 42vw;
-}
-
-/* The occasional tools, pushed to the end of the row. */
-.tree-canvas__tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  flex: none;
-}
-
-.icon-button--on {
-  background: var(--accent-bg);
-  color: var(--accent);
-}
-
-@media (min-width: 768px) {
-  .tree-canvas__header {
-    padding: 0;
-    gap: 12px;
-  }
-}
-
-.tree-canvas__back {
-  flex: none;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.tree-canvas__back:hover {
-  color: var(--accent);
-}
-
-.tree-canvas__focus-prompt {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  padding: 8px 12px;
-  background: var(--row-band);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.tree-canvas__focus-dismiss {
-  flex: none;
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 13px;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.tree-canvas__focus-dismiss:hover {
-  color: var(--accent);
-}
-
-.tree-canvas__focus-dismiss:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .tree-canvas__viewport {
   position: relative;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--border);
   overflow: hidden;
   background: var(--bg);
 }
@@ -150,39 +39,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
   }
-}
-
-/*
-  React Flow's zoom buttons are for a mouse. A phone already pinches, and
-  three stacked buttons over a small canvas take more than they give.
-*/
-@media (max-width: 767px) {
-  .tree-canvas__viewport .react-flow__controls {
-    display: none;
-  }
-}
-
-.tree-canvas__viewport .react-flow__controls {
-  box-shadow: var(--shadow);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.tree-canvas__viewport .react-flow__controls-button {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  fill: var(--text-secondary);
-  /* A full target here too. These are only shown to a mouse, where 32px
-     would be usable, but there is no reason for one control in the
-     application to be the exception. */
-  width: 44px;
-  height: 44px;
-}
-
-.tree-canvas__viewport .react-flow__controls-button:hover {
-  background: var(--row-band);
-  fill: var(--text);
 }
 
 /*
@@ -209,280 +65,154 @@
   color: var(--text-secondary);
 }
 
-.tree-canvas .react-flow__controls-button {
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-}
-
-.tree-canvas .react-flow__controls-button:hover {
-  background: var(--accent-bg);
-}
-
 .tree-canvas .react-flow__handle {
   background: var(--accent);
   border-color: var(--surface);
 }
 
 /*
- * Comparison is opt-in, so a plain click keeps opening a profile. The
- * button states which mode you are in rather than relying on a modifier
- * key, which a phone does not have.
- */
-.tree-canvas__compare {
-  padding: 7px 12px;
+  The camera controls — fit, in, out, and back to the current person.
+
+  A vertical stack at the right edge, clear of the family and clear of the
+  bottom bar. Shown on every screen size: the library's own controls were
+  hidden on a phone because they were tiny and pale, which is a reason to
+  replace them rather than a reason to have none.
+*/
+.tree-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 76px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-hover);
+  overflow: hidden;
+}
+
+.tree-controls__button {
+  width: 44px;
+  height: 44px;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tree-controls__button:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* At the end of the zoom range. Dimmed rather than removed — a control
+   that vanishes at a limit is one you then go looking for. */
+.tree-controls__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (min-width: 768px) {
+  .tree-controls {
+    right: 20px;
+    bottom: 20px;
+  }
+}
+
+/*
+  "View options" — what the tree is showing, and the way in to change it.
+
+  Bottom left, over the canvas rather than above it, mirroring the camera
+  controls on the other side. It names the active view rather than always
+  saying "View options", because whether you are looking at everybody or
+  at a narrowed frame is the one thing worth knowing at a glance.
+*/
+.tree-canvas__view-pill {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: calc(100% - 80px);
+  padding: 0 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  border-radius: 999px;
+  box-shadow: var(--shadow-hover);
   color: var(--text);
-  font-family: inherit;
-  font-size: 12px;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
 }
 
-.tree-canvas__compare:hover {
+.tree-canvas__view-pill:hover {
   border-color: var(--accent);
+  color: var(--accent);
 }
 
-.tree-canvas__compare:focus-visible {
+.tree-canvas__view-pill:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.tree-canvas__compare--on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-}
-
-/*
- * The collapse entry point. An expanded group draws no node of its own
- * (its members are just people), so there has to be somewhere else to
- * collapse it from — this list is that somewhere.
- */
-/* A popover on the header row, not a panel on the canvas — Phase 2. */
-.tree-canvas__groups {
-  position: relative;
-}
-
-.tree-canvas__groups-list {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
-  min-width: 220px;
-  max-width: calc(100vw - 32px);
-  padding: 6px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-hover);
-}
-
-/* The always-visible part: on a phone this is the whole control until tapped. */
-.tree-canvas__groups-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 6px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-family: inherit;
-  transition: background-color 0.15s ease;
-}
-
-.tree-canvas__groups-summary:hover {
-  background: var(--accent-bg);
-}
-
-.tree-canvas__groups-summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.tree-canvas__groups-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.tree-canvas__groups-badge {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.tree-canvas__groups-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.tree-canvas__groups-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 6px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.tree-canvas__groups-toggle:hover {
-  background: var(--accent-bg);
-}
-
-.tree-canvas__groups-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.tree-canvas__groups-disclosure {
-  flex-shrink: 0;
-  font-size: 9px;
-  line-height: 1;
-  color: var(--accent);
-}
-
-.tree-canvas__groups-name {
+.tree-canvas__view-pill-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-  .tree-canvas {
-    padding: 12px 12px 16px;
-    gap: 8px;
-  }
-
-  /* Bring the default ~26px control buttons closer to a comfortable
-     touch-target size without redesigning React Flow's own Controls. */
-  .tree-canvas .react-flow__controls-button {
-    width: 34px;
-    height: 34px;
-  }
-
-  .tree-canvas__compare {
-    min-height: 44px;
-    max-width: 150px;
-    padding: 6px 10px;
-    font-size: 11px;
-  }
-
-  .tree-canvas__groups {
-    max-width: 165px;
-    padding: 4px;
-  }
-
-  .tree-canvas__groups-list {
-    max-height: 120px;
-  }
-
-  /* Both controls hold the 44px minimum touch target. */
-  .tree-canvas__groups-summary,
-  .tree-canvas__groups-toggle {
-    min-height: 44px;
-    padding: 6px;
-  }
-
-  /* The count is the first thing to go when width is tight. */
-  .tree-canvas__groups-badge {
-    display: none;
-  }
-
-  .tree-canvas__header {
-    gap: 10px;
-  }
-
-  .tree-canvas__back {
-    /* The words are redundant next to the arrow once space is tight. */
-    font-size: 0;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-  }
-
-  .tree-canvas__back::before {
-    content: '←';
-    font-size: 18px;
-  }
-
-  .tree-canvas__focus-prompt {
-    font-size: 12px;
-    gap: 8px;
-  }
-
-  .tree-canvas__focus-dismiss {
-    min-height: 44px;
+@media (min-width: 768px) {
+  .tree-canvas__view-pill {
+    left: 20px;
+    bottom: 20px;
   }
 }
 
 /*
-  The Full <-> My Family toggle. Two buttons, no dropdown: with exactly two
-  views a menu would be more chrome than choice. The final multi-view
-  selector replaces this once there are more views to select.
+  The viewpoint trail, when the view has been moved from somebody to
+  somebody else. Floats at the top-left over the canvas and is absent
+  entirely until there is a history to show.
 */
-.tree-canvas__views {
+.tree-canvas__trail {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  right: 12px;
+  z-index: 4;
   display: flex;
-  margin-left: auto;
-  padding: 2px;
-  gap: 2px;
-  background: var(--row-band);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  pointer-events: none;
 }
 
-.tree-canvas__view {
-  padding: 5px 12px;
-  background: none;
-  border: none;
-  border-radius: calc(var(--radius-sm) - 2px);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.tree-canvas__view:hover {
-  color: var(--text);
-}
-
-.tree-canvas__view:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.tree-canvas__view--on {
+.tree-canvas__trail > * {
+  pointer-events: auto;
+  max-width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
-  color: var(--text);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  padding: 4px 12px;
 }
 
+@media (min-width: 768px) {
+  .tree-canvas__trail {
+    top: 20px;
+    left: 24px;
+    right: 24px;
+  }
+}
+
+/*
+  A framed view must never let the family appear to end at its edge. The
+  wording stays neutral about WHY somebody is absent: in Lineage most of
+  those hidden are not distant forebears at all but siblings, cousins and
+  children, and calling them "further out" would describe them wrongly.
+*/
 .tree-canvas__beyond {
   display: flex;
   align-items: center;
@@ -491,8 +221,7 @@
   margin: 0;
   padding: 8px 12px;
   background: var(--row-band);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: 13px;
 }
@@ -506,6 +235,7 @@
   text-decoration: underline;
   cursor: pointer;
   padding: 4px 0;
+  min-height: 44px;
 }
 
 .tree-canvas__beyond-action:focus-visible {
@@ -513,40 +243,80 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 480px) {
-  /*
-    Four views need about 285px, which is the whole width of a small
-    phone. Sharing a row with the viewpoint left the focal person's name
-    with 0px at 320px and an ellipsis as far up as 390px — the one thing
-    on that row a reader actually needs. So the header wraps and the
-    selector takes the row below it, which is the only extra row on the
-    screen and only ever appears when the width genuinely demands it.
-  */
-  .tree-canvas__header {
-    flex-wrap: wrap;
-  }
+.tree-canvas__focus-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--row-band);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
 
-  .tree-canvas__views {
-    margin-left: 0;
-    flex-basis: 100%;
-  }
+.tree-canvas__focus-dismiss {
+  flex: none;
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+  min-height: 44px;
+}
 
-  .tree-canvas__view {
-    /* Equal shares of the row, so the four read as one segmented control
-       rather than four buttons of accidental widths. */
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 44px;
-    padding: 4px 6px;
-    font-size: 11px;
-    text-align: center;
-  }
+.tree-canvas__focus-dismiss:hover {
+  color: var(--accent);
+}
 
-  .tree-canvas__beyond {
-    font-size: 12px;
-  }
+.tree-canvas__focus-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
-  .tree-canvas__beyond-action {
-    min-height: 44px;
-  }
+/*
+  Comparison is an explicit mode, started from the header menu. While it
+  is on, a banner says so and offers the way out — otherwise a click
+  behaving differently from usual would have no explanation on screen.
+*/
+.tree-canvas__comparing {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hover);
+  font-size: 13px;
+}
+
+.tree-canvas__comparing-stop {
+  flex: none;
+  margin-left: auto;
+  min-height: 44px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tree-canvas__comparing-stop:focus-visible {
+  outline: 2px solid var(--accent-contrast);
+  outline-offset: 2px;
 }

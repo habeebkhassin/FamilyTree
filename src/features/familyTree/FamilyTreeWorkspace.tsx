@@ -16,9 +16,11 @@ import { PersonProfile } from '../people/PersonProfile'
 import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../people/personDisplay'
 import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
+import { TreeSearch } from '../tree-view/TreeSearch'
 import { PeopleScreen } from './PeopleScreen'
 import { MenuScreen } from './MenuScreen'
 import { ViewOptionsScreen } from './ViewOptionsScreen'
+import { FamilySwitcher } from './FamilySwitcher'
 import type { ImplementedView } from '../tree-view/viewTypes'
 import { exportFamilyTree, backupFilename, serialiseBackup } from '../../lib/backup'
 import { BackupActions } from './BackupActions'
@@ -29,6 +31,7 @@ import {
   IconButton,
   type Destination,
 } from '../../components/AppShell'
+import { OverflowMenu } from '../../components/OverflowMenu'
 import { Icon } from '../../components/icons'
 import { Button } from '../../components/Button'
 import { useFamilyGraph } from './useFamilyGraph'
@@ -39,6 +42,15 @@ interface FamilyTreeWorkspaceProps {
   tree: FamilyTree
   /** A restored backup created a new tree; the app should switch to it. */
   onTreeImported: (familyTreeId: string) => void
+  /**
+   * How many families this device holds, and how to open another one.
+   *
+   * The count decides whether the header's family name is a control at
+   * all: with one family there is nowhere to switch to, and a chevron
+   * would promise a choice that does not exist.
+   */
+  familyCount: number
+  onSwitchFamily: (familyTreeId: string) => void
 }
 
 type View =
@@ -55,6 +67,8 @@ type View =
   | { screen: 'settings' }
   | { screen: 'menu' }
   | { screen: 'viewOptions' }
+  /** Which of the user's families to look at. */
+  | { screen: 'familySwitcher' }
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -62,7 +76,12 @@ function describeLinkError(error: unknown): string {
   return 'Something went wrong connecting them.'
 }
 
-export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspaceProps) {
+export function FamilyTreeWorkspace({
+  tree,
+  onTreeImported,
+  familyCount,
+  onSwitchFamily,
+}: FamilyTreeWorkspaceProps) {
   const {
     people,
     parentLinks,
@@ -99,7 +118,15 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     addMember,
     removeMember,
   } = useFamilyGroups(tree.id)
-  const [view, setView] = useState<View>({ screen: 'home' })
+  /**
+   * The tree is where the application opens.
+   *
+   * It used to open on the People list. In an application whose subject
+   * is a family tree — and whose bottom bar now puts Tree first — landing
+   * on a directory made the tree somewhere you had to go and find. The
+   * empty state still takes over when there is nobody in the family yet.
+   */
+  const [view, setView] = useState<View>({ screen: 'tree' })
   const [linkError, setLinkError] = useState<string | null>(null)
   const [isLinking, setIsLinking] = useState(false)
   /**
@@ -121,9 +148,16 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
 
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people])
 
+  /**
+   * Home is the tree.
+   *
+   * It used to be the People list, which left the family-groups screen's
+   * own "Back to family tree" button landing on a directory instead. One
+   * home, and the labels pointing at it are now true.
+   */
   function goHome() {
     setLinkError(null)
-    setView({ screen: 'home' })
+    setView({ screen: 'tree' })
   }
 
   function openSettings() {
@@ -140,6 +174,14 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
   const [showGenerations, setShowGenerations] = useState(true)
   const [showPhotos, setShowPhotos] = useState(true)
 
+  /**
+   * Comparison and search: two occasional things that used to sit on top
+   * of the family. Both are held here because both are opened from the
+   * header, and neither is a fact about the graph.
+   */
+  const [isComparing, setIsComparing] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+
   async function handleExport() {
     const backup = await exportFamilyTree(tree.id)
     const blob = new Blob([serialiseBackup(backup)], { type: 'application/json' })
@@ -152,16 +194,32 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
   }
 
   /**
-   * Which of the two destinations the bottom bar should show as current.
+   * Which of the three destinations the bottom bar should show as current.
    *
    * A secondary screen reached from People — a profile, a form — still
    * belongs to People, so the bar does not appear to jump while you are
-   * several steps into something.
+   * several steps into something. The occasional screens behind More
+   * belong to More for the same reason.
    */
-  const destination: Destination = view.screen === 'tree' ? 'tree' : 'people'
+  const destination: Destination =
+    view.screen === 'tree'
+      ? 'tree'
+      : view.screen === 'menu' ||
+          view.screen === 'settings' ||
+          view.screen === 'familyGroups' ||
+          view.screen === 'createFamilyGroup' ||
+          view.screen === 'editFamilyGroup' ||
+          view.screen === 'familyGroupDetail' ||
+          view.screen === 'familySwitcher'
+        ? 'more'
+        : 'people'
 
-  /** Only the two top-level destinations get the bar and the add button. */
+  /**
+   * Tree and People get the workspace header. More is a destination too,
+   * but it draws its own, so the two lists are not the same one.
+   */
   const isTopLevel = view.screen === 'home' || view.screen === 'tree'
+  const showsBottomNav = isTopLevel || view.screen === 'menu'
 
   /**
    * Screens that draw their own header — Phase 3.
@@ -177,13 +235,16 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     (view.screen === 'createPerson' && !view.relativeIntent) ||
     view.screen === 'menu' ||
     view.screen === 'viewOptions' ||
-    view.screen === 'settings'
+    view.screen === 'settings' ||
+    view.screen === 'familySwitcher'
 
   function navigate(next: Destination) {
     // Clears any stale relationship error on the way out, which is what
     // the old per-screen openers each did for themselves.
     setLinkError(null)
-    setView(next === 'tree' ? { screen: 'tree' } : { screen: 'home' })
+    if (next === 'tree') setView({ screen: 'tree' })
+    else if (next === 'more') setView({ screen: 'menu' })
+    else setView({ screen: 'home' })
   }
 
   function openProfile(personId: string) {
@@ -283,9 +344,58 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     openFamilyGroups()
   }
 
-  const headerActions = (
-    <IconButton label="Menu" onClick={() => setView({ screen: 'menu' })}>
-      {Icon.more({ size: 20 })}
+  /**
+   * The header of the tree screen, as the reference draws it: the family
+   * name with a chevron, the membership count beneath, then search and a
+   * menu.
+   *
+   * The name is the family's own rather than a fixed "My Family" — the
+   * count is the real number of people in it, and both come from the data
+   * rather than from the design.
+   */
+  const memberCount = people.length
+  const canSwitchFamily = familyCount > 1
+
+  const treeHeaderActions = (
+    <>
+      <IconButton
+        label="Find a family member"
+        disabled={memberCount === 0}
+        onClick={() => setIsSearching(true)}
+      >
+        {Icon.search({ size: 20 })}
+      </IconButton>
+      <OverflowMenu
+        label="More actions"
+        actions={[
+          {
+            id: 'add',
+            label: 'Add a person',
+            icon: Icon.people({ size: 20 }),
+            onSelect: () => openCreatePerson(),
+          },
+          // Comparison needs two people to pick between.
+          ...(memberCount >= 2
+            ? [
+                {
+                  id: 'compare',
+                  label: isComparing ? 'Stop comparing' : 'Compare two people',
+                  icon: Icon.rings({ size: 20 }),
+                  active: isComparing,
+                  onSelect: () => setIsComparing((comparing) => !comparing),
+                },
+              ]
+            : []),
+        ]}
+      />
+    </>
+  )
+
+  const peopleHeaderActions = (
+    <IconButton label="Add a person" onClick={() => openCreatePerson()}>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      </svg>
     </IconButton>
   )
 
@@ -293,9 +403,19 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     <div className="workspace">
       {isTopLevel ? (
         <AppHeader
-          title={view.screen === 'tree' ? 'My Family' : 'People'}
-          subtitle={view.screen === 'tree' ? tree.name : undefined}
-          actions={headerActions}
+          title={view.screen === 'tree' ? tree.name : 'People'}
+          subtitle={
+            view.screen === 'tree'
+              ? `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`
+              : undefined
+          }
+          onTitleClick={
+            view.screen === 'tree' && canSwitchFamily
+              ? () => setView({ screen: 'familySwitcher' })
+              : undefined
+          }
+          titleMenuLabel={`${tree.name}. Switch to another family`}
+          actions={view.screen === 'tree' ? treeHeaderActions : peopleHeaderActions}
         />
       ) : view.screen === 'settings' ? (
         <AppHeader
@@ -331,11 +451,20 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
         {view.screen === 'menu' && (
           <MenuScreen
             treeName={tree.name}
+            onAddPerson={() => openCreatePerson()}
             onOpenFamilyGroups={openFamilyGroups}
             onOpenBackup={openSettings}
             onExport={() => void handleExport()}
             onOpenIdentity={openSettings}
-            onBack={goHome}
+            onSwitchFamily={canSwitchFamily ? () => setView({ screen: 'familySwitcher' }) : undefined}
+          />
+        )}
+
+        {view.screen === 'familySwitcher' && (
+          <FamilySwitcher
+            activeTreeId={tree.id}
+            onPick={onSwitchFamily}
+            onBack={() => setView({ screen: 'menu' })}
           />
         )}
 
@@ -343,10 +472,14 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
           <ViewOptionsScreen
             activeView={treeView}
             onChangeView={setTreeView}
+            canUseFocalViews={Boolean(focal.focalPersonId)}
             showGenerations={showGenerations}
             onChangeShowGenerations={setShowGenerations}
             showPhotos={showPhotos}
             onChangeShowPhotos={setShowPhotos}
+            familyGroups={familyGroups}
+            collapsedGroupIds={collapsedGroupIds}
+            onToggleFamilyGroup={toggleFamilyGroup}
             onBack={() => setView({ screen: 'tree' })}
           />
         )}
@@ -390,6 +523,27 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
             onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
             showGenerations={showGenerations}
             showPhotos={showPhotos}
+            isComparing={isComparing}
+            onStopComparing={() => setIsComparing(false)}
+          />
+        )}
+
+        {/*
+          Search sits over the tree rather than replacing it: the answer to
+          "where is my aunt" is a place on this canvas, so leaving the
+          canvas to go and find it would throw away the thing being
+          searched. Picking somebody moves the view to them — the same
+          focus machinery a tap on a card offers — and never opens their
+          profile, which would be a different question.
+        */}
+        {view.screen === 'tree' && isSearching && (
+          <TreeSearch
+            people={people}
+            onPick={(personId) => {
+              focal.focusOn(personId)
+              setIsSearching(false)
+            }}
+            onClose={() => setIsSearching(false)}
           />
         )}
 
@@ -568,23 +722,12 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
           })()}
       </div>
 
-      {isTopLevel && (
-        <>
-          {/*
-            One obvious action per destination, and only where it means
-            something. An empty family already shows "Add first person" in
-            the middle of the screen, so a second button offering the same
-            thing would only be two ways to do one thing.
-          */}
-          <BottomNavigation
-            current={destination}
-            onNavigate={navigate}
-            {...(people.length > 0
-              ? { onAdd: () => openCreatePerson(), addLabel: 'Add a person' }
-              : {})}
-          />
-        </>
-      )}
+      {/*
+        The bar appears on all three destinations, More included. More
+        draws its own header and therefore has no back button, so without
+        the bar underneath it there would be no way out of it at all.
+      */}
+      {showsBottomNav && <BottomNavigation current={destination} onNavigate={navigate} />}
     </div>
   )
 }

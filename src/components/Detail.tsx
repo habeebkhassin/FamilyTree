@@ -198,21 +198,42 @@ export function MenuRow({
  */
 export function ChoiceRow({
   label,
+  description,
   selected,
+  disabled,
   onClick,
 }: {
   label: string
+  /**
+   * A second, quieter line. When the choice is unavailable this is where
+   * the reason goes — an option that cannot be picked must say why, or it
+   * reads as broken rather than as not yet applicable.
+   */
+  description?: string
   selected: boolean
+  disabled?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
-      className={selected ? 'choice-row choice-row--on' : 'choice-row'}
+      className={
+        [
+          'choice-row',
+          selected ? 'choice-row--on' : null,
+          disabled ? 'choice-row--off' : null,
+        ]
+          .filter(Boolean)
+          .join(' ')
+      }
       aria-pressed={selected}
+      disabled={disabled}
       onClick={onClick}
     >
-      <span className="choice-row__label">{label}</span>
+      <span className="choice-row__text">
+        <span className="choice-row__label">{label}</span>
+        {description && <span className="choice-row__description">{description}</span>}
+      </span>
       {selected && (
         <span className="choice-row__tick" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20">

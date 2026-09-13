@@ -1,20 +1,55 @@
+/*
+  The marriage marker.
+
+  The box is exactly the size layout.ts reserves for this node. The date
+  above it is positioned out of flow on purpose: a caption that changed
+  the node box would change where two partners sit relative to each other,
+  and a couple with a recorded date would end up spaced differently from a
+  couple without one.
+*/
 .union-junction {
-  width: 10px;
-  height: 10px;
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.union-junction__marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   background: var(--accent);
-  border: 2px solid var(--surface);
-  border-radius: 2px;
-  transform: rotate(45deg);
+  color: var(--accent-contrast);
+  /* Sits on the connecting line, so it needs to sever it cleanly. */
+  border: 3px solid var(--bg);
   box-shadow: var(--shadow);
 }
 
-@media (max-width: 480px) {
-  .union-junction {
-    /* Slightly larger for visibility on small screens — still a small
-       diamond, not a card, so it never reads as a third "person". */
-    width: 13px;
-    height: 13px;
-  }
+/*
+  "12 Jun 1962".
+
+  Centred above the rings and allowed to be wider than them — it is a
+  label floating over the canvas, not a box anything else has to make room
+  for. `pointer-events: none` keeps it from stealing a pan gesture that
+  starts on top of it.
+*/
+.union-junction__caption {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 /* Fades with its family. The box size is untouched at every tier —

@@ -44,6 +44,46 @@
   text-overflow: ellipsis;
 }
 
+/*
+  The family name as a control, when there is another family to switch
+  to. The chevron is part of the button rather than a decoration beside
+  it, so the whole name-plus-chevron is one 44px target.
+*/
+.app-header__title-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-header__title-button:hover {
+  color: var(--accent);
+}
+
+.app-header__title-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.app-header__title-button svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.app-header__title-button:hover svg {
+  color: var(--accent);
+}
+
 .app-header__subtitle {
   font-size: 13px;
   color: var(--text-secondary);
@@ -115,39 +155,6 @@
 }
 
 /* ── bottom navigation ───────────────────────────────────────────── */
-
-/*
-  The add action sits between the two destinations — Phase 3, following
-  the reference. It reads as one group: where you can go, and the one
-  thing you can make. It replaces the corner button, which floated over
-  content and covered a row.
-*/
-.bottom-nav__add {
-  flex: none;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin: 0 8px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  box-shadow: var(--shadow-hover);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.bottom-nav__add:hover {
-  background: var(--accent-hover);
-}
-
-.bottom-nav__add:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
 
 .bottom-nav {
   position: fixed;

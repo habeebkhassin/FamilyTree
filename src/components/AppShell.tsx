@@ -20,18 +20,51 @@ export function AppHeader({
   subtitle,
   leading,
   actions,
+  onTitleClick,
+  titleMenuLabel,
 }: {
   title: string
   subtitle?: string
   /** Usually a back button. Absent on a top-level destination. */
   leading?: ReactNode
   actions?: ReactNode
+  /**
+   * Makes the title itself a control, marked with a chevron.
+   *
+   * Used for switching between families. Offered only when there is
+   * somewhere to switch to — a chevron beside the only family somebody
+   * has is a promise of a choice that does not exist.
+   */
+  onTitleClick?: () => void
+  titleMenuLabel?: string
 }) {
   return (
     <header className="app-header">
       {leading && <div className="app-header__leading">{leading}</div>}
       <div className="app-header__titles">
-        <h1 className="app-header__title">{title}</h1>
+        {onTitleClick ? (
+          <button
+            type="button"
+            className="app-header__title-button"
+            onClick={onTitleClick}
+            aria-haspopup="menu"
+            aria-label={titleMenuLabel ?? `${title}. Switch family`}
+          >
+            <h1 className="app-header__title">{title}</h1>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path
+                d="M6 9l6 6 6-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : (
+          <h1 className="app-header__title">{title}</h1>
+        )}
         {subtitle && <p className="app-header__subtitle">{subtitle}</p>}
       </div>
       {actions && <div className="app-header__actions">{actions}</div>}
@@ -64,62 +97,37 @@ export function IconButton({
   )
 }
 
-export type Destination = 'tree' | 'people'
+export type Destination = 'tree' | 'people' | 'more'
+
+const DESTINATIONS = [
+  { id: 'tree', label: 'Tree', icon: <TreeIcon /> },
+  { id: 'people', label: 'People', icon: <PeopleIcon /> },
+  { id: 'more', label: 'More', icon: <MoreIcon /> },
+] as const
 
 /**
- * The two places you can be.
+ * The three places you can be.
  *
  * Labelled as well as drawn: an icon alone is a guess, and this has to
  * work for a reader who has never used an app like this before.
+ *
+ * More is a destination rather than a menu hidden in a corner, because
+ * everything occasional lives behind it and a reader should be able to
+ * see that there IS more without having to discover it. The add action
+ * that used to sit in the middle of this bar moved to the People screen
+ * and the tree's own menu — a bar is for saying where you are, and it
+ * was the only thing here that was not a place.
  */
 export function BottomNavigation({
   current,
   onNavigate,
-  onAdd,
-  addLabel,
 }: {
   current: Destination
   onNavigate: (destination: Destination) => void
-  /** The add action sits between the two destinations, as one group. */
-  onAdd?: () => void
-  addLabel?: string
 }) {
   return (
     <nav className="bottom-nav" aria-label="Main">
-      {(
-        [
-          { id: 'tree', label: 'Tree', icon: <TreeIcon /> },
-        ] as const
-      ).map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className={
-            current === item.id ? 'bottom-nav__item bottom-nav__item--on' : 'bottom-nav__item'
-          }
-          aria-current={current === item.id ? 'page' : undefined}
-          onClick={() => onNavigate(item.id)}
-        >
-          <span className="bottom-nav__icon" aria-hidden="true">
-            {item.icon}
-          </span>
-          <span className="bottom-nav__label">{item.label}</span>
-        </button>
-      ))}
-
-      {onAdd && (
-        <button type="button" className="bottom-nav__add" onClick={onAdd} aria-label={addLabel ?? 'Add'}>
-          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-        </button>
-      )}
-
-      {(
-        [
-          { id: 'people', label: 'People', icon: <PeopleIcon /> },
-        ] as const
-      ).map((item) => (
+      {DESTINATIONS.map((item) => (
         <button
           key={item.id}
           type="button"
@@ -136,6 +144,18 @@ export function BottomNavigation({
         </button>
       ))}
     </nav>
+  )
+}
+
+export function MoreIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <g fill="currentColor">
+        <circle cx="5" cy="12" r="1.9" />
+        <circle cx="12" cy="12" r="1.9" />
+        <circle cx="19" cy="12" r="1.9" />
+      </g>
+    </svg>
   )
 }
 

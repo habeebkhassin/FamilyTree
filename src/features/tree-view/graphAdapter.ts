@@ -74,7 +74,15 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
     type: 'unionJunction',
     position: { x: 0, y: 0 },
     selectable: false,
-    data: { unionId: union.id, status: union.status },
+    data: {
+      unionId: union.id,
+      status: union.status,
+      // Spread conditionally so an undated union carries no key at all
+      // rather than a key holding undefined — the marker asks "is there a
+      // date here", and those two must not be different answers.
+      ...(union.startDate ? { startDate: union.startDate } : {}),
+      ...(union.endDate ? { endDate: union.endDate } : {}),
+    },
   }))
 
   const linksByChild = new Map<string, ParentLink[]>()

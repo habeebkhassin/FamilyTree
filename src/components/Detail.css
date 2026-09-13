@@ -336,14 +336,45 @@
   background: var(--accent-bg);
 }
 
-.choice-row__label {
+.choice-row__text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice-row__label {
   font-size: 16px;
   color: var(--text);
 }
 
+.choice-row__description {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
 .choice-row--on .choice-row__label {
   font-weight: 600;
+}
+
+/*
+  A choice that does not apply yet — a view measured from somebody, with
+  nobody chosen to measure from. Dimmed but still readable, and its
+  description carries the reason: an option that simply refuses to
+  respond reads as broken rather than as not yet applicable.
+*/
+.choice-row--off {
+  cursor: default;
+}
+
+.choice-row--off .choice-row__label {
+  color: var(--text-secondary);
+}
+
+.choice-row--off:hover {
+  background: none;
 }
 
 .choice-row__tick {

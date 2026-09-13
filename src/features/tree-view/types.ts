@@ -17,6 +17,14 @@ export type PersonNode = Node<PersonNodeData, 'person'>
 export interface UnionJunctionNodeData extends Record<string, unknown> {
   unionId: string
   status: UnionStatus
+  /**
+   * Carried so the marker can say WHEN, the way a family tree normally
+   * does. Copied verbatim off the Union — the junction reports the
+   * record, it never interprets it, and an absent date stays absent
+   * rather than becoming a guess.
+   */
+  startDate?: string
+  endDate?: string
 }
 
 export type UnionJunctionNode = Node<UnionJunctionNodeData, 'unionJunction'>

@@ -1,0 +1,127 @@
+/*
+  The search sheet.
+
+  Covers the canvas rather than replacing the screen: you are still on the
+  tree, you are just looking for somewhere on it.
+*/
+.tree-search {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.tree-search__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tree-search__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.tree-search__field:focus-within {
+  border-color: var(--accent);
+}
+
+.tree-search__icon {
+  flex: none;
+  display: flex;
+  color: var(--text-secondary);
+}
+
+.tree-search__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  /* 16px keeps iOS from zooming the page when the field takes focus. */
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.tree-search__input:focus {
+  outline: none;
+}
+
+.tree-search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tree-search__results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px calc(12px + var(--bottom-nav-height));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-search__hint {
+  margin: 16px 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.tree-search__result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tree-search__result:hover {
+  background: var(--row-band);
+}
+
+.tree-search__result:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tree-search__result-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tree-search__result-name {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-search__result-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+}

@@ -1,25 +1,41 @@
+/*
+  The person card: a portrait above a name.
+
+  Every dimension here is the one layout.ts places with. That is not a
+  coincidence to be maintained by hand — it is the contract. If the two
+  disagree, cards drift out of the space reserved for them and the
+  generation bands stop lining up with the people standing in them.
+*/
+.person-node__frame {
+  position: relative;
+  width: 132px;
+  height: 148px;
+  /* The "more children" affordance hangs below the card, in the gap the
+     row pitch leaves between generations. */
+  overflow: visible;
+}
+
 .person-node {
   position: relative;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 11px;
-  width: 160px;
+  gap: 8px;
+  width: 132px;
   /*
-    Pinned, not a minimum. layout.ts already treats every person as
-    exactly 72px tall when it places rows and derives the generation
-    bands, so a card that could grow with its content was free to drift
-    out of step with the geometry around it. Fixing the height makes the
-    stylesheet state the contract the layout has always assumed.
+    Pinned, not a minimum. layout.ts treats every person as exactly this
+    tall when it places rows and derives the generation bands, so a card
+    free to grow with its content would drift out of step with the
+    geometry around it.
   */
-  height: 72px;
-  padding: 10px 12px;
+  height: 148px;
+  padding: 12px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   /* Rounder than a form control, to read as a person rather than a field. */
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: var(--shadow);
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -30,6 +46,15 @@
 .person-node:hover {
   border-color: var(--accent);
   box-shadow: var(--shadow-hover);
+}
+
+/*
+  The portrait. The largest thing on the card and the first thing read —
+  people recognise their relatives by face before name, and a family tree
+  that leads with photographs is doing the work a family tree is for.
+*/
+.person-node__photo {
+  flex-shrink: 0;
 }
 
 /*
@@ -54,8 +79,7 @@
   Distance from the focal person, expressed as weight rather than colour.
   Opacity only ever reduces; the card keeps its exact dimensions at every
   tier, so nothing here can disturb a measurement in layout.ts. `primary`
-  is the default and deliberately identical to how every card looked
-  before this phase, which is what an unfocused tree still gets.
+  is the default, which is what every card in an unfocused tree gets.
 */
 .person-node--primary {
   opacity: 1;
@@ -100,9 +124,6 @@
   it immediately while the node keeps its exact dimensions, so every
   measurement in layout.ts stays true and nothing about ranking or
   placement shifts when focus moves.
-
-  It reads as unmistakable mostly because everything around it has stepped
-  back — the ring does the last part of the work, not all of it.
 */
 .person-node--focal {
   opacity: 1;
@@ -114,7 +135,7 @@
 }
 
 .person-node--focal .person-node__name {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .person-node__sr-only {
@@ -149,50 +170,51 @@
 .person-node__info {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
   min-width: 0;
   /*
-    The card's height is fixed, so the text block must never be the thing
-    that pushes against it. Line heights below are chosen so the worst
-    case — given name, family name and years together — comes to 48px
-    inside the 50px of content the card has, and this is the backstop if a
-    future line is ever added.
+    The card height is fixed, so the text block must never be the thing
+    that pushes against it. The worst case — a two-line name plus the meta
+    line — comes to 50px, and this is the backstop if a line is ever added.
   */
-  max-height: 50px;
+  max-height: 52px;
   overflow: hidden;
-}
-
-.person-node__name {
-  font-family: var(--font-heading);
-  font-size: 14px;
-  line-height: 18px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /*
-  The family name, under the given name and deliberately quieter.
+  The whole name, wrapping to at most two lines.
 
-  Same secondary colour the years already use — no new colour enters the
-  system for this. It reads as the supporting half of one name rather than
-  as a second field.
+  A third line is clamped away rather than allowed to push the card out of
+  the space the layout reserved for it. The title attribute on the element
+  carries the full name for anyone who needs it.
 */
-.person-node__surname {
-  font-size: 12px;
-  line-height: 15px;
-  color: var(--text-secondary);
-  white-space: nowrap;
+.person-node__name {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--text);
+  width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 
-.person-node__years {
+/*
+  Age, or a lifespan for someone who has died. Quiet, and the only piece
+  of information on the card that is not the name — see formatNodeMeta for
+  why it is one or the other and never both.
+*/
+.person-node__meta {
   font-size: 12px;
-  line-height: 15px;
+  line-height: 14px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .person-node__placeholder {
@@ -203,52 +225,68 @@
   color: var(--accent);
 }
 
-@media (max-width: 480px) {
-  .person-node {
-    width: 148px;
-    /* Pinned for the same reason as the desktop card, and to the same
-       64px it has always rendered at on a phone. */
-    height: 64px;
-    padding: 8px 10px;
-    gap: 8px;
-  }
+/*
+  "2 more children · Tap to view".
 
-  .person-node__info {
-    /* 64px card, less 16px padding and 2px border. */
-    max-height: 46px;
-  }
+  Dashed rather than solid, and in the gap below the card rather than on
+  it: this is not another person, it is a note that the family carries on
+  past the edge of this view. Tapping it goes and shows them, using the
+  same focus-and-view machinery every other way of moving around the tree
+  already uses.
+*/
+.person-node__more {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 104px;
+  min-height: 44px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
 
-  .person-node__name {
-    font-size: 13px;
-    line-height: 16px;
-  }
+.person-node__more:hover,
+.person-node__more:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
-  /* 12px is the floor anywhere in this interface: below it the family
-     name stops being readable for the people most likely to be reading
-     it. The line heights keep the card at its fixed 64px. */
-  .person-node__surname {
-    font-size: 12px;
-    line-height: 13px;
-  }
+.person-node__more-count {
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+}
 
-  .person-node__years {
-    font-size: 12px;
-    line-height: 13px;
-  }
+.person-node__more-hint {
+  font-size: 11px;
+  line-height: 13px;
+  opacity: 0.85;
 }
 
 /*
   Family-unit rail — Phase 5C-4.
 
   Marks the people who share a household with the focal person: the family
-  they were born into, and the one they went on to make. A 3px rail down
-  the leading edge, drawn inside the card's existing padding so no
-  dimension changes and layout.ts's measurements stay true.
+  they were born into, and the one they went on to make. Drawn inside the
+  existing padding so no dimension changes and the layout measurements
+  stay true.
 
-  Deliberately quieter than the focal ring and quieter than the card's own
+  Deliberately quieter than the focal ring and quieter than the card
   border on hover. It is a hint for the eye scanning for branches, not a
-  second hierarchy competing with emphasis — and it is a rail rather than a
-  background tint so light and dark themes behave identically.
+  second hierarchy competing with emphasis.
 
   This is NOT a Family Group. Those are explicit, user-defined and drawn as
   labelled containers; this is derived at render time and never stored.

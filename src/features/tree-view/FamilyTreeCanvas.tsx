@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, useStore } from '@xyflow/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Background, ReactFlow, ReactFlowProvider, useReactFlow, useStore } from '@xyflow/react'
 import type { Node, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
@@ -18,7 +18,7 @@ import { GenerationLabel } from './GenerationLabel'
 import type { GenerationLabelNode } from './GenerationLabel'
 import { GenerationBand } from './GenerationBand'
 import type { GenerationBandNode } from './GenerationBand'
-import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth } from './layout'
+import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth, PERSON_NODE_SIZE } from './layout'
 import { computeRanks } from './rank'
 import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
@@ -63,6 +63,14 @@ interface FamilyTreeCanvasProps {
   showGenerations: boolean
   showPhotos: boolean
   onDismissFocusPrompt: () => void
+  /**
+   * Comparison is a secondary action, so it is started from the header
+   * menu rather than from a button sitting over the family. The canvas
+   * still owns everything about HOW two people are compared; it is only
+   * told whether the mode is on.
+   */
+  isComparing: boolean
+  onStopComparing: () => void
 }
 
 // Stable across renders/instances — React Flow warns (and re-renders
@@ -76,7 +84,6 @@ const NODE_TYPES = {
   generationBand: GenerationBand,
 }
 
-/** Short enough that four of them still read as one small control. */
 /**
  * One vocabulary for the views — Phase 3.
  *
@@ -280,10 +287,12 @@ function FocalPersonCenterer({
    */
   recentreTick: number
 }) {
-  const { fitView } = useReactFlow()
-  // The pane's own width, which only something inside the provider can
-  // know. It is what decides how much family fits at the readable floor.
+  const { fitView, setViewport } = useReactFlow()
+  // The pane's own size, which only something inside the provider can
+  // know. Width decides how much family fits at the readable floor;
+  // height decides whether a tall family can be fitted at all.
   const paneWidth = useStore((state) => state.width)
+  const paneHeight = useStore((state) => state.height)
 
   /**
    * The overview frame: everyone within the widest window that still
@@ -300,6 +309,47 @@ function FocalPersonCenterer({
    * When the family is small enough to fit inside the window, this selects
    * all of it and the result is an ordinary fit of the whole graph.
    */
+  /**
+   * Everybody whose card falls inside the widest window that still leaves
+   * a card readable, centred on a given point.
+   *
+   * Chosen as a NODE SET rather than as a zoom floor handed to fitView,
+   * and that distinction is the whole reason this exists: giving fitView
+   * the whole graph and a minimum zoom makes it centre the GRAPH, which
+   * puts somebody at the edge of a five-generation family off screen
+   * entirely. Choosing the nodes keeps the point of interest in the
+   * middle of whatever is shown, and still goes through the single
+   * fitView call every other view uses.
+   */
+  const framePeopleAround = useCallback(
+    (centreX: number, cardWidth: number): string[] => {
+      const minZoom = OVERVIEW_MIN_CARD_PX / cardWidth
+      const usableWidth = paneWidth * (1 - 2 * OVERVIEW_PADDING)
+      // The frame's bounding box runs from the left edge of the leftmost
+      // card to the right edge of the rightmost, so it is one whole card
+      // wider than the span between their centres. Measuring from centres
+      // without allowing for that made every frame a card too wide, and
+      // the zoom that much too low.
+      const windowWidth = usableWidth / minZoom
+      const halfWindow = Math.max(0, (windowWidth - cardWidth) / 2)
+
+      return nodes
+        .filter((node) => {
+          if (node.type !== 'person') return false
+          return Math.abs(node.position.x + nodeWidth(node) / 2 - centreX) <= halfWindow
+        })
+        .map((node) => node.id)
+    },
+    [nodes, paneWidth],
+  )
+
+  /**
+   * The overview frame: everyone within the widest window that still
+   * leaves a card readable, centred on the focal person.
+   *
+   * When the family is small enough to fit inside the window, this selects
+   * all of it and the result is an ordinary fit of the whole graph.
+   */
   const overviewIds = useMemo<readonly string[] | null>(() => {
     if (!overview || !focalPersonId || paneWidth <= 0) return null
     const focal = nodes.find((node) => node.id === focalPersonId)
@@ -309,35 +359,94 @@ function FocalPersonCenterer({
     // rather than assumed, so the phone breakpoint is accounted for
     // without this needing to know the breakpoint exists.
     const cardWidth = nodeWidth(focal)
-    const minZoom = OVERVIEW_MIN_CARD_PX / cardWidth
-    const usableWidth = paneWidth * (1 - 2 * OVERVIEW_PADDING)
-    // The frame's bounding box runs from the left edge of the leftmost
-    // card to the right edge of the rightmost, so it is one whole card
-    // wider than the span between their centres. Measuring from centres
-    // without allowing for that made every frame a card too wide, and the
-    // zoom that much too low.
-    const windowWidth = usableWidth / minZoom
-    const halfWindow = Math.max(0, (windowWidth - cardWidth) / 2)
-
-    const focalCentre = focal.position.x + cardWidth / 2
-    const framed = nodes
-      .filter((node) => {
-        if (node.type !== 'person') return false
-        return Math.abs(node.position.x + nodeWidth(node) / 2 - focalCentre) <= halfWindow
-      })
-      .map((node) => node.id)
+    const framed = framePeopleAround(focal.position.x + cardWidth / 2, cardWidth)
     return framed.includes(focalPersonId) ? framed : [focalPersonId, ...framed]
-  }, [overview, focalPersonId, paneWidth, nodes])
+  }, [overview, focalPersonId, paneWidth, nodes, framePeopleAround])
+
+  /**
+   * What the tree opens on when nobody has been focused yet.
+   *
+   * Without this React Flow fits the entire graph: a fifty-person family
+   * is nearly 2900px wide and five generations tall, so on a phone it
+   * lands at about a tenth of full size, where a card is fourteen pixels
+   * and the family is a smudge rather than a tree. That is the first
+   * thing somebody sees.
+   *
+   * Fitting a readable SELECTION does not solve it either, because a
+   * selection that is readably narrow is still five generations tall, and
+   * on a phone height is the binding constraint — the frame ends up
+   * almost as small again.
+   *
+   * So a large family does not open fitted at all. It opens at the scale
+   * that keeps a card readable, at the top of the tree and centred on the
+   * oldest generation, and you pan from there — which is how the
+   * reference design reads, and how anyone looks at a family tree on
+   * paper. A family that genuinely fits while staying readable is still
+   * simply fitted whole.
+   */
+  const opening = useMemo(() => {
+    if (focalPersonId || paneWidth <= 0 || paneHeight <= 0) return null
+    const people = nodes.filter((node) => node.type === 'person')
+    if (people.length === 0) return null
+
+    const cardWidth = nodeWidth(people[0] as FamilyNode)
+    const readableZoom = Math.min(1, OVERVIEW_MIN_CARD_PX / cardWidth)
+
+    const lefts = people.map((node) => node.position.x)
+    const rights = people.map((node) => node.position.x + nodeWidth(node))
+    const tops = people.map((node) => node.position.y)
+    const bottoms = people.map((node) => node.position.y + PERSON_NODE_SIZE.height)
+    const graphWidth = Math.max(...rights) - Math.min(...lefts)
+    const graphHeight = Math.max(...bottoms) - Math.min(...tops)
+
+    const fitsAt = Math.min(paneWidth / graphWidth, paneHeight / graphHeight)
+    // Small enough to show whole without shrinking past legibility.
+    if (fitsAt >= readableZoom) return { fit: true as const }
+
+    const topY = Math.min(...tops)
+    const topRow = people.filter((node) => node.position.y === topY)
+    // Centred on the oldest generation rather than on the whole graph: in
+    // a family that widens as it descends the two are far apart, and the
+    // founders are what the opening view is meant to show.
+    //
+    // The MEDIAN of that row, not the midpoint between its extremes. A
+    // top generation whose members sit at opposite ends of a wide family
+    // has nothing but canvas at its midpoint, so the tree opened looking
+    // at the gap between two ancestors with both of them off screen. The
+    // median always lands on somebody.
+    const centres = topRow
+      .map((node) => node.position.x + nodeWidth(node) / 2)
+      .sort((a, b) => a - b)
+    const centreX = centres[Math.floor(centres.length / 2)] ?? 0
+
+    return {
+      fit: false as const,
+      zoom: readableZoom,
+      x: paneWidth / 2 - centreX * readableZoom,
+      // A little clear of the top edge, so the oldest generation is not
+      // flush against the header.
+      y: 24 - topY * readableZoom,
+    }
+  }, [focalPersonId, paneWidth, paneHeight, nodes])
 
   useEffect(() => {
-    if (!focalPersonId) return
-    if (!nodes.some((node) => node.id === focalPersonId)) return
     // The glide is what preserves orientation when the viewpoint moves —
     // an instant jump loses the user. For anyone who has asked for less
-    // motion, arriving instantly is the lesser harm.
+    // motion, arriving instantly is the lesser harm. The opening frame
+    // arrives instantly for everyone: there is no previous position for a
+    // glide to preserve continuity with.
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+
+    if (!focalPersonId) {
+      if (!opening) return
+      if (opening.fit) void fitView({ padding: OVERVIEW_PADDING, duration: 0, maxZoom: 1.1 })
+      else setViewport({ x: opening.x, y: opening.y, zoom: opening.zoom })
+      return
+    }
+
+    if (!nodes.some((node) => node.id === focalPersonId)) return
     // maxZoom is unchanged, so a small frame never blows a lone person up
     // larger than they have ever been drawn.
     fitView({
@@ -346,7 +455,7 @@ function FocalPersonCenterer({
       maxZoom: 1.1,
       ...(overviewIds ? { padding: OVERVIEW_PADDING } : {}),
     })
-  }, [focalPersonId, framingIds, overviewIds, nodes, fitView, recentreTick])
+  }, [focalPersonId, framingIds, overviewIds, opening, nodes, fitView, setViewport, recentreTick])
 
   return null
 }
@@ -372,6 +481,8 @@ export function FamilyTreeCanvas({
   onOpenViewOptions,
   showGenerations,
   showPhotos,
+  isComparing,
+  onStopComparing,
 }: FamilyTreeCanvasProps) {
   /**
    * Selection and focus are different things. Selecting asks "who is
@@ -454,7 +565,8 @@ export function FamilyTreeCanvas({
    * hold on a phone). While it is on, clicking people picks the pair
    * instead of navigating away from the tree.
    */
-  const [isComparing, setIsComparing] = useState(false)
+  // Whether the mode is on is the workspace's to say — it is started from
+  // the header menu. Which two people are picked stays here.
   const [comparisonIds, setComparisonIds] = useState<string[]>([])
   const [preferredByPair, setPreferredByPair] = useState<Record<string, string>>({})
 
@@ -473,10 +585,11 @@ export function FamilyTreeCanvas({
     return resolveRelationships(comparisonAId, comparisonBId, { people, parentLinks, unions })
   }, [comparisonAId, comparisonBId, people, parentLinks, unions])
 
-  function toggleComparisonMode() {
-    setIsComparing((comparing) => !comparing)
-    setComparisonIds([])
-  }
+  // Leaving the mode clears the pair, so turning it on again never starts
+  // half-way through somebody else's comparison.
+  useEffect(() => {
+    if (!isComparing) setComparisonIds([])
+  }, [isComparing])
 
   function pickForComparison(personId: string) {
     setComparisonIds((current) => {
@@ -560,6 +673,59 @@ export function FamilyTreeCanvas({
     [viewGraph, peopleById],
   )
 
+  /**
+   * How many children each visible person has that this view does not
+   * reach — the "2 more children" note under a card.
+   *
+   * Counted from the real ParentLinks against the set the projection
+   * recorded as left out, so it is always the true number and never an
+   * estimate. Deliberately NOT a second way of asking who someone's
+   * children are: the links are the same records the rest of the
+   * application reads, simply filtered by what is currently on screen.
+   *
+   * Collapsed family groups are excluded on purpose. A collapsed group
+   * already draws a labelled container saying how many people it stands
+   * for, and counting its members here too would tell somebody the same
+   * absence twice in two different ways.
+   */
+  const hiddenChildCountByParentId = useMemo(() => {
+    const counts = new Map<string, number>()
+    if (viewGraph.hiddenNodeIds.size === 0) return counts
+
+    const drawn = new Set(projectedGraph.nodes.map((node) => node.id))
+    const absorbedByGroups = new Set(
+      projectedGraph.nodes.flatMap((node) =>
+        node.type === 'familyGroup' ? node.data.absorbedPersonIds : [],
+      ),
+    )
+
+    for (const link of parentLinks) {
+      // Only for a parent the reader can actually see the note under.
+      if (!drawn.has(link.parentId)) continue
+      if (drawn.has(link.childId)) continue
+      if (absorbedByGroups.has(link.childId)) continue
+      if (!peopleById.has(link.childId)) continue
+      counts.set(link.parentId, (counts.get(link.parentId) ?? 0) + 1)
+    }
+    return counts
+  }, [viewGraph, projectedGraph, parentLinks, peopleById])
+
+  /**
+   * Going to see them: stand where that parent stands, and look down.
+   *
+   * Uses the focus and view machinery every other way of moving around
+   * this tree already uses — no separate "expanded" state to keep in step
+   * with the graph, and nothing that could show a person the projection
+   * says is not in this view.
+   */
+  const revealChildrenOf = useCallback(
+    (personId: string) => {
+      onFocusPerson(personId)
+      onChangeView('descendants')
+    },
+    [onFocusPerson, onChangeView],
+  )
+
   // Restyled per view, not per graph: emphasis changes when the viewpoint
   // moves, while the edges themselves do not.
   const edges = useMemo(
@@ -592,7 +758,16 @@ export function FamilyTreeCanvas({
           // exactly as it always was.
           const emphasis = emphasisFor(viewGraph, node.id)
           const familyUnit = familyUnits.get(node.id)
-          if (index === -1 && !isFocal && emphasis === 'primary' && !familyUnit && showPhotos) return node
+          const hiddenChildren = node.type === 'person' ? (hiddenChildCountByParentId.get(node.id) ?? 0) : 0
+          if (
+            index === -1 &&
+            !isFocal &&
+            emphasis === 'primary' &&
+            !familyUnit &&
+            showPhotos &&
+            hiddenChildren === 0
+          )
+            return node
 
           return {
             ...node,
@@ -603,12 +778,26 @@ export function FamilyTreeCanvas({
               ...(emphasis !== 'primary' && { emphasis }),
               ...(familyUnit && { familyUnit }),
               ...(showPhotos ? {} : { hidePhoto: true }),
+              ...(hiddenChildren > 0 && {
+                hiddenChildCount: hiddenChildren,
+                onRevealChildren: () => revealChildrenOf(node.id),
+              }),
             },
           }
         }
         return node
       }),
-    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph, familyUnits, showPhotos],
+    [
+      layoutedNodes,
+      onToggleFamilyGroup,
+      comparisonIds,
+      focalPersonId,
+      viewGraph,
+      familyUnits,
+      showPhotos,
+      hiddenChildCountByParentId,
+      revealChildrenOf,
+    ],
   )
 
   const groupHeaders = useMemo<Node[]>(
@@ -694,76 +883,27 @@ export function FamilyTreeCanvas({
 
   return (
     <div className="tree-canvas">
-      <div className="tree-canvas__header">
-        <FocusBreadcrumb
-          history={focusHistory}
-          focalPersonId={focalPersonId ?? null}
-          claimedPersonId={claimedPersonId}
-          peopleById={peopleById}
-          onBack={onFocusBack}
-        />
+      {/*
+        Nothing sits above the family any more.
 
-        {/*
-          The occasional tools, as icons on the header row rather than
-          panels floating over the family — Phase 2. Between them they used
-          to cover both top corners of the canvas, which on a phone is a
-          large share of the tree.
-        */}
-        <div className="tree-canvas__tools">
-          {focalPersonId && (
-            <IconButton label="Centre on the current person" onClick={recentreOnFocalPerson}>
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="3.2" />
-                  <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
-                </g>
-              </svg>
-            </IconButton>
-          )}
-          <IconButton
-            label={isComparing ? 'Stop comparing' : 'Compare two people'}
-            aria-pressed={isComparing}
-            className={isComparing ? 'icon-button--on' : undefined}
-            onClick={toggleComparisonMode}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <circle cx="7.5" cy="8" r="3" />
-                <circle cx="16.5" cy="8" r="3" />
-                <path d="M3 19c0-2.5 2-4.2 4.5-4.2S12 16.5 12 19M12 19c0-2.5 2-4.2 4.5-4.2S21 16.5 21 19" />
-              </g>
-            </svg>
-          </IconButton>
-          {familyGroups.length > 0 && (
-            <FamilyGroupTogglePanel
-              familyGroups={familyGroups}
-              collapsedGroupIds={collapsedGroupIds}
-              onToggle={onToggleFamilyGroup}
-            />
-          )}
+        The header row this replaces held a focus trail, three icon
+        buttons and a view button. The family is the content of this
+        screen, so it gets the screen: what is left floats over the canvas
+        at its edges, and only when there is something to say. The
+        occasional actions moved to the header menu, and what the tree
+        shows moved into View options.
+      */}
+      {focusHistory.length > 0 && (
+        <div className="tree-canvas__trail">
+          <FocusBreadcrumb
+            history={focusHistory}
+            focalPersonId={focalPersonId ?? null}
+            claimedPersonId={claimedPersonId}
+            peopleById={peopleById}
+            onBack={onFocusBack}
+          />
         </div>
-
-        {/*
-          One button instead of four — Phase 3. The row of view names was
-          the largest thing left above the tree, and three of the four were
-          always switched off. What is showing is named in the button;
-          changing it is a screen, where each choice has room to be a
-          sentence rather than a word.
-        */}
-        {canUseMyFamily && (
-          <button
-            type="button"
-            className="tree-canvas__view-button"
-            onClick={onOpenViewOptions}
-            aria-label={`View: ${VIEW_LABELS[activeView]}. Change what the tree shows`}
-          >
-            <span className="tree-canvas__view-label">{VIEW_LABELS[activeView]}</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
-      </div>
+      )}
 
       {/*
         A framed view must never let the family appear to end at its edge.
@@ -803,7 +943,14 @@ export function FamilyTreeCanvas({
               nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable
-              fitView={!focalPersonId}
+              /*
+                The opening frame is chosen by FocalPersonCenterer, which
+                holds it to a readable card width. React Flow's own
+                fitView would fit the entire graph at any scale — on a
+                fifty-person family that is a tenth of full size, where
+                the family is a smudge rather than a tree.
+              */
+              fitView={false}
               /*
                 Far enough out to take in a whole family — Phase 2.
 
@@ -820,11 +967,16 @@ export function FamilyTreeCanvas({
             >
               <Background gap={28} />
               {/*
-                Kept for a mouse, hidden on a phone by CSS: pinch already
-                zooms, and three stacked buttons over a small canvas cost
-                more than they give.
+                Four controls, on a phone as well as a desktop. React
+                Flow's own Controls were hidden on small screens because
+                they were small, pale and stacked in a corner; these are
+                44px targets on a real surface, which is what makes them
+                usable by the readers this interface is for.
               */}
-              <Controls showInteractive={false} showFitView={false} />
+              <TreeControls
+                onRecentre={focalPersonId ? recentreOnFocalPerson : null}
+                minZoom={minZoom}
+              />
               <FocalPersonCenterer
                 focalPersonId={focalPersonId}
                 framingIds={framingIds}
@@ -864,84 +1016,120 @@ export function FamilyTreeCanvas({
             onClear={() => setComparisonIds([])}
           />
         )}
+
+        {/*
+          What the tree is showing, and the way in to change it.
+
+          A pill in the bottom-left corner, over the canvas rather than
+          above it, so the family keeps the full height of the screen. It
+          names the active view rather than saying only "View options",
+          because the one thing somebody needs to know at a glance is
+          whether they are looking at everybody or at a narrowed frame.
+        */}
+        <button
+          type="button"
+          className="tree-canvas__view-pill"
+          onClick={onOpenViewOptions}
+          aria-label={`View options. Showing: ${VIEW_LABELS[activeView]}`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+              <circle cx="16" cy="7" r="2.1" />
+              <circle cx="8" cy="17" r="2.1" />
+            </g>
+          </svg>
+          <span className="tree-canvas__view-pill-label">
+            {activeView === 'full' ? 'View options' : VIEW_LABELS[activeView]}
+          </span>
+        </button>
+
+        {isComparing && (
+          <p className="tree-canvas__comparing" role="status">
+            <span>Pick two people to see how they are related.</span>
+            <button type="button" className="tree-canvas__comparing-stop" onClick={onStopComparing}>
+              Done
+            </button>
+          </p>
+        )}
       </div>
     </div>
   )
 }
 
 /**
- * Collapsing needs an entry point that exists while a group is EXPANDED —
- * and an expanded group has no node on the canvas by design (its members
- * are simply drawn normally). So the canvas carries a small list of the
- * tree's groups: collapse from here, and expand either from here or by
- * activating the collapsed group's node in the graph.
+ * Fit, zoom in, zoom out, and back to the current person.
  *
- * Phase 2 moved it off the canvas and onto the header row, where it is one
- * icon until tapped. Left open in the corner of the tree it covered
- * people, which on a phone is a real share of the family; a popover costs
- * nothing until somebody wants it.
+ * Four, and deliberately only four. A graph library will happily offer a
+ * dozen; a family tree needs the camera controls somebody would expect on
+ * a map, and every extra button is one more thing sitting on top of the
+ * family.
+ *
+ * Lives inside the ReactFlow subtree so it can use the viewport API
+ * directly rather than mirroring the camera in state — there is one
+ * camera, and this asks it to move.
  */
-function FamilyGroupTogglePanel({
-  familyGroups,
-  collapsedGroupIds,
-  onToggle,
-}: {
-  familyGroups: FamilyGroup[]
-  collapsedGroupIds: ReadonlySet<string>
-  onToggle: (familyGroupId: string) => void
-}) {
-  // Closed everywhere: it is a popover on the header row now, not a panel
-  // that has room to sit open.
-  const [isOpen, setIsOpen] = useState(false)
-  const collapsedCount = familyGroups.filter((group) => collapsedGroupIds.has(group.id)).length
+function TreeControls({ onRecentre, minZoom }: { onRecentre: (() => void) | null; minZoom: number }) {
+  const { zoomIn, zoomOut, fitView } = useReactFlow()
+  const zoom = useStore((state) => state.transform[2])
+
+  // Disabled rather than hidden at the ends of the range: a control that
+  // disappears when you reach a limit is a control you then go looking
+  // for, and its absence never explains itself.
+  const atMin = zoom <= minZoom + 0.001
+  const atMax = zoom >= 2 - 0.001
 
   return (
-    <div className="tree-canvas__groups">
-      <button
-        type="button"
-        className={
-          collapsedCount > 0
-            ? 'icon-button tree-canvas__groups-trigger icon-button--on'
-            : 'icon-button tree-canvas__groups-trigger'
-        }
-        aria-expanded={isOpen}
-        aria-label={
-          collapsedCount > 0
-            ? `Family Groups, ${collapsedCount} collapsed`
-            : `Family Groups, ${familyGroups.length}`
-        }
-        title="Family Groups"
-        onClick={() => setIsOpen((open) => !open)}
+    <div className="tree-controls">
+      <IconButton
+        label="Fit the whole family on screen"
+        className="tree-controls__button"
+        onClick={() => void fitView({ padding: 0.12, duration: 250 })}
       >
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3.5" y="4.5" width="17" height="6" rx="2" />
-            <rect x="3.5" y="13.5" width="17" height="6" rx="2" />
+          <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" />
           </g>
         </svg>
-      </button>
+      </IconButton>
 
-      {isOpen && (
-        <ul className="tree-canvas__groups-list">
-          {familyGroups.map((group) => {
-            const isExpanded = !collapsedGroupIds.has(group.id)
-            return (
-              <li key={group.id}>
-                <button
-                  type="button"
-                  className="tree-canvas__groups-toggle"
-                  aria-expanded={isExpanded}
-                  onClick={() => onToggle(group.id)}
-                >
-                  <span className="tree-canvas__groups-disclosure" aria-hidden="true">
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
-                  <span className="tree-canvas__groups-name">{group.name}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+      <IconButton
+        label="Zoom in"
+        className="tree-controls__button"
+        disabled={atMax}
+        onClick={() => void zoomIn({ duration: 180 })}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+        </svg>
+      </IconButton>
+
+      <IconButton
+        label="Zoom out"
+        className="tree-controls__button"
+        disabled={atMin}
+        onClick={() => void zoomOut({ duration: 180 })}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+        </svg>
+      </IconButton>
+
+      {/* Only offered when there is somebody to go back to. */}
+      {onRecentre && (
+        <IconButton
+          label="Centre on the current person"
+          className="tree-controls__button"
+          onClick={onRecentre}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <circle cx="12" cy="12" r="3.2" />
+              <circle cx="12" cy="12" r="7.5" />
+              <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2" />
+            </g>
+          </svg>
+        </IconButton>
       )}
     </div>
   )

@@ -1,0 +1,10 @@
+.person-photo {
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+  background: var(--surface-raised);
+  /* The same quiet ring the initials avatar carries, so a family that has
+     photos for some people and not others still reads as one set. */
+  box-shadow: inset 0 0 0 1px var(--border);
+}

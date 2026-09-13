@@ -1,12 +1,14 @@
-import { AppHeader, IconButton } from '../../components/AppShell'
+import { AppHeader } from '../../components/AppShell'
 import { MenuRow } from '../../components/Detail'
 import { Icon } from '../../components/icons'
 
 /**
- * The secondary menu — Phase 3.
+ * More — the third destination.
  *
  * Everything you do occasionally, in one list, so the two screens people
- * actually use stay uncluttered.
+ * actually use stay uncluttered. It is a place in the bottom bar rather
+ * than a menu hidden behind an icon, because a reader should be able to
+ * see that there IS more without first having to discover it.
  *
  * Every row here opens something real. Settings and Help are deliberately
  * absent rather than present and inert: a row that leads nowhere is worse
@@ -15,35 +17,41 @@ import { Icon } from '../../components/icons'
  */
 export function MenuScreen({
   treeName,
+  onAddPerson,
   onOpenFamilyGroups,
   onOpenBackup,
   onExport,
   onOpenIdentity,
-  onBack,
+  onSwitchFamily,
 }: {
   treeName: string
+  onAddPerson: () => void
   onOpenFamilyGroups: () => void
   onOpenBackup: () => void
   onExport: () => void
   onOpenIdentity: () => void
-  onBack: () => void
+  /** Absent when this device holds only one family. */
+  onSwitchFamily?: () => void
 }) {
   return (
     <>
-      <AppHeader
-        title="My Family"
-        subtitle={treeName}
-        leading={
-          <IconButton label="Back" onClick={onBack}>
-            {Icon.back({ size: 20 })}
-          </IconButton>
-        }
-      />
+      {/*
+        A destination in the bottom bar now rather than a screen reached
+        from the header, so it carries no back button: you leave it the
+        way you arrived, by choosing Tree or People.
+      */}
+      <AppHeader title="More" subtitle={treeName} />
       <div className="app-page">
         <div className="app-page__inner">
           <div className="menu-list">
             <MenuRow
               icon={Icon.people()}
+              label="Add a person"
+              description="Put somebody new into this family"
+              onClick={onAddPerson}
+            />
+            <MenuRow
+              icon={Icon.branch()}
               label="Manage relatives"
               description="Branches and households you have named"
               onClick={onOpenFamilyGroups}
@@ -66,6 +74,15 @@ export function MenuScreen({
               description="The name your changes are recorded under"
               onClick={onOpenIdentity}
             />
+            {/* Only when there is another family to switch to. */}
+            {onSwitchFamily && (
+              <MenuRow
+                icon={Icon.layers()}
+                label="Switch family"
+                description="Open another family tree on this device"
+                onClick={onSwitchFamily}
+              />
+            )}
           </div>
         </div>
       </div>
