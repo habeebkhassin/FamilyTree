@@ -47,7 +47,17 @@ export function UnionJunctionNode({ data }: NodeProps<UnionJunctionNodeType>) {
 
   return (
     <div className={`union-junction union-junction--${emphasis}`}>
-      <Handle type="target" position={Position.Top} />
+      {/*
+        The bond arrives from one partner on the left and leaves to the
+        other on the right; descent to their children leaves the bottom.
+        Three anchors, so the couple reads as a horizontal pair with one
+        line falling from between them — rather than as a junction box
+        with wires converging on it.
+      */}
+      <Handle type="target" position={Position.Left} id="left-in" />
+      <Handle type="source" position={Position.Left} id="left-out" />
+      <Handle type="target" position={Position.Right} id="right-in" />
+      <Handle type="source" position={Position.Right} id="right-out" />
 
       {caption && <span className="union-junction__caption">{caption}</span>}
 
@@ -64,7 +74,7 @@ export function UnionJunctionNode({ data }: NodeProps<UnionJunctionNodeType>) {
         </svg>
       </span>
 
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Bottom} id="bottom" />
     </div>
   )
 }

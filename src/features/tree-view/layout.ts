@@ -918,6 +918,43 @@ export async function layoutFamilyGraph(
 }
 
 export const PERSON_NODE_SIZE = { width: PERSON_NODE_WIDTH, height: PERSON_NODE_HEIGHT }
+
+/**
+ * How far the union marker sits below the top of its row, so that it
+ * lines up with the portraits either side of it.
+ *
+ * Every node is placed at `rank * ROW_HEIGHT`, which is the top of the
+ * row. That is right for a card, and wrong for a 30px marker standing
+ * between two 148px cards: it left the marker floating at the top of the
+ * row with the couple's bond running diagonally up to it, and every line
+ * down to their children starting above the cards and falling past them.
+ * The offset is applied where the marker is drawn, not in the layout, so
+ * the rows, the bands and every measurement taken from this module are
+ * unchanged.
+ */
+export const JUNCTION_ROW_OFFSET = (PERSON_NODE_HEIGHT - JUNCTION_NODE_SIZE) / 2
+
+/**
+ * How far above a row the descent rail runs — the middle of the gap
+ * between one generation's cards and the next.
+ *
+ * Shared by every edge arriving at a row, which is what makes a parent's
+ * separate child edges coincide along one line and read as a single
+ * branch. See FamilyBranchEdge.
+ */
+export const DESCENT_RAIL_INSET = LAYER_SPACING / 2
+
+/**
+ * How far apart two branches sit when they would otherwise share a line,
+ * and how many such heights the gap has room for.
+ *
+ * The gap between two rows is LAYER_SPACING, and a rail has to stay clear
+ * of the cards above and below it, so the usable band is smaller than the
+ * gap. Three heights at 13px fit inside it with room at both ends, and
+ * three is enough for every row in the realistic fixtures.
+ */
+export const DESCENT_RAIL_STEP = 13
+export const DESCENT_RAIL_LEVELS = 3
 export const JUNCTION_SIZE = JUNCTION_NODE_SIZE
 export const GENERATION_ROW_HEIGHT = ROW_HEIGHT
 /** Single source of truth for a node's rendered width — the canvas reuses this so generation bands stay in step with layout. */

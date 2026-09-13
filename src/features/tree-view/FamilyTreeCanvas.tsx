@@ -18,7 +18,16 @@ import { GenerationLabel } from './GenerationLabel'
 import type { GenerationLabelNode } from './GenerationLabel'
 import { GenerationBand } from './GenerationBand'
 import type { GenerationBandNode } from './GenerationBand'
-import { familyGroupNodeHeight, GENERATION_ROW_HEIGHT, nodeWidth, PERSON_NODE_SIZE } from './layout'
+import {
+  familyGroupNodeHeight,
+  GENERATION_ROW_HEIGHT,
+  JUNCTION_ROW_OFFSET,
+  nodeWidth,
+  PERSON_NODE_SIZE,
+} from './layout'
+import { collapseSharedDescent, orientUnionSegments } from './descentEdges'
+import { assignDescentRails } from './descentRails'
+import { FamilyBranchEdge } from './FamilyBranchEdge'
 import { computeRanks } from './rank'
 import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
@@ -75,6 +84,10 @@ interface FamilyTreeCanvasProps {
 
 // Stable across renders/instances — React Flow warns (and re-renders
 // needlessly) if nodeTypes changes identity on every render.
+const EDGE_TYPES = {
+  familyBranch: FamilyBranchEdge,
+}
+
 const NODE_TYPES = {
   person: PersonNode,
   unionJunction: UnionJunctionNode,
@@ -729,8 +742,17 @@ export function FamilyTreeCanvas({
   // Restyled per view, not per graph: emphasis changes when the viewpoint
   // moves, while the edges themselves do not.
   const edges = useMemo(
-    () => styleEdgesForView(projectedGraph.edges, viewGraph),
-    [projectedGraph, viewGraph],
+    // Collapsed last, so emphasis and boundary styling have already been
+    // applied to every real edge before the identical ones are merged.
+    () =>
+      assignDescentRails(
+        orientUnionSegments(
+          collapseSharedDescent(styleEdgesForView(projectedGraph.edges, viewGraph)),
+          layoutedNodes,
+        ),
+        layoutedNodes,
+      ),
+    [projectedGraph, viewGraph, layoutedNodes],
   )
 
   const generationLabels = useMemo(() => buildGenerationLabels(layoutedNodes), [layoutedNodes])
@@ -750,15 +772,38 @@ export function FamilyTreeCanvas({
             data: { ...node.data, onToggle: () => onToggleFamilyGroup(node.data.familyGroup.id) },
           }
         }
-        if (node.type === 'person' || node.type === 'unionJunction') {
-          const index = node.type === 'person' ? comparisonIds.indexOf(node.id) : -1
+        if (node.type === 'unionJunction') {
+          /*
+            Dropped to the height of the portraits beside it.
+
+            Layout places every node at the top of its row, which is right
+            for a 148px card and wrong for a 30px marker standing between
+            two of them: it left the couple's bond running diagonally up
+            to a marker floating above their heads, and every line down to
+            their children starting above the cards and falling past them.
+
+            Applied here rather than in layout.ts on purpose — the rows,
+            the generation bands, the framing and the layout diagnostic
+            all measure node.position, and this is a drawing offset, not a
+            change to where anybody stands.
+          */
+          const emphasis = emphasisFor(viewGraph, node.id)
+          return {
+            ...node,
+            position: { x: node.position.x, y: node.position.y + JUNCTION_ROW_OFFSET },
+            ...(emphasis !== 'primary' && { data: { ...node.data, emphasis } }),
+          }
+        }
+
+        if (node.type === 'person') {
+          const index = comparisonIds.indexOf(node.id)
           const isFocal = node.id === focalPersonId
           // Absent from the map means `primary`, which is what every node
           // gets when nobody is focused — so an unfocused tree is drawn
           // exactly as it always was.
           const emphasis = emphasisFor(viewGraph, node.id)
           const familyUnit = familyUnits.get(node.id)
-          const hiddenChildren = node.type === 'person' ? (hiddenChildCountByParentId.get(node.id) ?? 0) : 0
+          const hiddenChildren = hiddenChildCountByParentId.get(node.id) ?? 0
           if (
             index === -1 &&
             !isFocal &&
@@ -939,6 +984,7 @@ export function FamilyTreeCanvas({
               nodes={displayNodes}
               edges={edges}
               nodeTypes={NODE_TYPES}
+              edgeTypes={EDGE_TYPES}
               onNodeClick={handleNodeClick}
               nodesDraggable={false}
               nodesConnectable={false}

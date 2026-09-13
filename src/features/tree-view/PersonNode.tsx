@@ -62,7 +62,22 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   return (
     <div className="person-node__frame">
       <div className={classes}>
-        <Handle type="target" position={Position.Top} />
+        {/*
+          Four anchors, because a family tree draws two different kinds of
+          line and they leave a card from different places. Descent
+          arrives at the top and leaves from the bottom; a partnership
+          runs sideways at the height of the portrait, which is what makes
+          a couple read as standing side by side rather than as two nodes
+          wired together.
+        */}
+        <Handle type="target" position={Position.Top} id="top" />
+        {/* Both directions on each side: which partner sits left of the
+            marker depends on where the layout put them, and a bond must
+            always leave by the nearer edge. */}
+        <Handle type="target" position={Position.Left} id="left-in" />
+        <Handle type="source" position={Position.Left} id="left-out" />
+        <Handle type="target" position={Position.Right} id="right-in" />
+        <Handle type="source" position={Position.Right} id="right-out" />
 
         {/* View options can turn photos off; the initials go with them. */}
         {data.hidePhoto !== true && (
@@ -102,7 +117,7 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
           </span>
         )}
 
-        <Handle type="source" position={Position.Bottom} />
+        <Handle type="source" position={Position.Bottom} id="bottom" />
       </div>
 
       {/*

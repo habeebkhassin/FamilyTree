@@ -102,7 +102,12 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
       id: link.id,
       source: union ? junctionId(union.id) : link.parentId,
       target: link.childId,
-      type: 'smoothstep',
+      // Descent always leaves the bottom and arrives at the top, so a
+      // parent's separate child edges can share one rail on the way —
+      // see FamilyBranchEdge.
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
+      type: 'familyBranch',
       style: {
         stroke: 'var(--text-secondary)',
         strokeWidth: 1.5,
@@ -131,10 +136,15 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
     const style = unionEdgeStyle(union.status)
 
     return [
+      // Side to side at the height of the portraits, which is what makes
+      // two people read as a couple standing together rather than as two
+      // nodes wired to a box.
       {
         id: `${union.id}#a`,
         source: union.partnerAId,
         target: junction,
+        sourceHandle: 'right-out',
+        targetHandle: 'left-in',
         type: 'straight',
         style,
         data: { ...baseData, segment: 'a' as const },
@@ -143,6 +153,8 @@ export function buildFamilyGraph(people: Person[], parentLinks: ParentLink[], un
         id: `${union.id}#b`,
         source: junction,
         target: union.partnerBId,
+        sourceHandle: 'right-out',
+        targetHandle: 'left-in',
         type: 'straight',
         style,
         data: { ...baseData, segment: 'b' as const },

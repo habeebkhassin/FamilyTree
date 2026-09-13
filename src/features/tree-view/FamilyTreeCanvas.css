@@ -65,9 +65,24 @@
   color: var(--text-secondary);
 }
 
+/*
+  The anchors the lines attach to are invisible.
+
+  They were drawn as small accent dots, which was reasonable when there
+  were two per card and nothing else on the canvas. A card now carries
+  six — top, bottom and both directions on each side — and fifty cards
+  put three hundred dots on the screen. Nothing can be dragged or
+  connected here, so they were decoration that said "node graph" at
+  exactly the moment the tree stopped being one.
+*/
 .tree-canvas .react-flow__handle {
-  background: var(--accent);
-  border-color: var(--surface);
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  min-width: 0;
+  min-height: 0;
+  width: 1px;
+  height: 1px;
 }
 
 /*
@@ -319,4 +334,24 @@
 .tree-canvas__comparing-stop:focus-visible {
   outline: 2px solid var(--accent-contrast);
   outline-offset: 2px;
+}
+
+/*
+  The word on a non-biological branch — "Adopted", "Step", "Foster".
+
+  Rare and meaningful, so it is drawn rather than dropped; quiet and
+  small, so it never competes with the names. It sits on the rail, which
+  is empty space between two generations, so it covers nobody.
+*/
+.family-branch__label {
+  position: absolute;
+  pointer-events: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
