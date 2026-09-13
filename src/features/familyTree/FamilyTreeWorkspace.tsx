@@ -14,6 +14,7 @@ import { PersonForm } from '../people/PersonForm'
 import type { PersonFormValues } from '../people/PersonForm'
 import { PersonProfile } from '../people/PersonProfile'
 import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../people/personDisplay'
+import { suggestRelatives } from '../people/suggestedRelatives'
 import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
 import { TreeSearch } from '../tree-view/TreeSearch'
@@ -553,11 +554,17 @@ export function FamilyTreeWorkspace({
             if (!intent) {
               return <PersonForm mode="create" onSubmit={handleCreateSubmit} onCancel={goHome} />
             }
+            // Everyone who could be connected. Reachable through the
+            // screen's search; never rendered as a list.
+            const candidates = people.filter((person) => person.id !== intent.anchorPersonId)
             return (
               <AddRelativeScreen
                 intent={intent}
                 anchorParents={engine.getParents(intent.anchorPersonId)}
-                candidates={people.filter((person) => person.id !== intent.anchorPersonId)}
+                candidates={candidates}
+                // Ranked here, where the relationship engine already lives,
+                // so the screen stays presentation only.
+                suggested={suggestRelatives(intent.anchorPersonId, engine, candidates)}
                 error={linkError}
                 isBusy={isLinking}
                 onConnectExisting={(personId, extras) => handleConnectExisting(personId, intent, extras)}

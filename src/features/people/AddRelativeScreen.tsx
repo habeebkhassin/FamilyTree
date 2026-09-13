@@ -4,17 +4,21 @@ import { Card } from '../../components/Card'
 import { Field } from '../../components/Field'
 import type { ParentRelationship, Person, UnionStatus } from '../../types'
 import type { RelatedParent } from '../../lib/relationships/deriveRelationships'
-import { PersonCard } from './PersonCard'
+import { PersonPhoto } from '../../components/PersonPhoto'
+import { Icon } from '../../components/icons'
 import { PersonForm } from './PersonForm'
 import type { PersonFormValues } from './PersonForm'
-import { formatName } from './personDisplay'
+import { formatName, formatYearRange, matchesQuery } from './personDisplay'
 import type { LinkExtras, RelativeIntent } from './types'
 import './AddRelativeScreen.css'
 
 interface AddRelativeScreenProps {
   intent: RelativeIntent
   anchorParents: RelatedParent[]
+  /** Everyone who could be connected — reachable through search, never listed. */
   candidates: Person[]
+  /** The few worth offering up front. Ranked by the relationship engine. */
+  suggested: Person[]
   error: string | null
   isBusy: boolean
   onConnectExisting: (personId: string, extras: LinkExtras) => void
@@ -43,6 +47,7 @@ export function AddRelativeScreen({
   intent,
   anchorParents,
   candidates,
+  suggested,
   error,
   isBusy,
   onConnectExisting,
@@ -55,11 +60,22 @@ export function AddRelativeScreen({
   const [unionStatus, setUnionStatus] = useState<UnionStatus>('partnered')
   const [unionStartDate, setUnionStartDate] = useState('')
 
-  const filteredCandidates = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return candidates
-    return candidates.filter((person) => formatName(person).toLowerCase().includes(term))
-  }, [candidates, search])
+  /*
+    Searching reaches the whole family; not searching shows the handful
+    of people the answer is likely to be. The full list is never rendered
+    on arrival — on any real tree that meant scrolling past everybody you
+    were not looking for before reaching the form.
+
+    `matchesQuery` is the same predicate the People directory and the
+    tree's own search use, so all three agree on what counts as a match.
+  */
+  const isSearching = search.trim().length > 0
+  const results = useMemo(() => {
+    if (!isSearching) return suggested
+    return candidates
+      .filter((person) => matchesQuery(person, search))
+      .sort((a, b) => formatName(a).localeCompare(formatName(b)))
+  }, [candidates, suggested, search, isSearching])
 
   function buildExtras(): LinkExtras {
     if (intent.kind === 'parent' || intent.kind === 'child') {
@@ -152,24 +168,64 @@ export function AddRelativeScreen({
       {candidates.length > 0 && (
         <Card className="add-relative__existing">
           <h2 className="add-relative__section-title">Connect someone already in this tree</h2>
-          <input
-            type="text"
-            className="add-relative__search"
-            placeholder="Search by name"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          {filteredCandidates.length === 0 ? (
-            <p className="add-relative__empty">No one matches "{search}".</p>
+
+          <label className="add-relative__search">
+            <span className="add-relative__search-icon" aria-hidden="true">
+              {Icon.search({ size: 18 })}
+            </span>
+            <input
+              type="search"
+              className="add-relative__search-input"
+              placeholder="Search family members…"
+              aria-label="Search family members"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
+          {/*
+            Named only when these are suggestions. Under search results the
+            heading would be describing the wrong thing.
+          */}
+          {!isSearching && results.length > 0 && (
+            <p className="add-relative__suggested-label">Suggested</p>
+          )}
+
+          {results.length === 0 ? (
+            <p className="add-relative__empty">
+              {isSearching
+                ? 'No family members found.'
+                : 'Search for anyone already in this family.'}
+            </p>
           ) : (
-            <div className="add-relative__grid">
-              {filteredCandidates.map((person) => (
-                <PersonCard
-                  key={person.id}
-                  person={person}
-                  onClick={() => !isBusy && onConnectExisting(person.id, buildExtras())}
-                />
-              ))}
+            <div
+              className={
+                isSearching ? 'add-relative__people add-relative__people--results' : 'add-relative__people'
+              }
+            >
+              {results.map((person) => {
+                const years = formatYearRange(person)
+                return (
+                  <button
+                    key={person.id}
+                    type="button"
+                    className="add-relative__person"
+                    disabled={isBusy}
+                    // The years are the disambiguator when two relatives
+                    // share a name, so they belong in the accessible name
+                    // even though the chip is too small to show them.
+                    title={years ? `${formatName(person)} · ${years}` : formatName(person)}
+                    // The years disambiguate two relatives who share a
+                    // name; the chip has no room to show them, so they go
+                    // to anyone listening rather than being lost.
+                    aria-label={years ? `${formatName(person)}, ${years}` : formatName(person)}
+                    onClick={() => onConnectExisting(person.id, buildExtras())}
+                  >
+                    <PersonPhoto person={person} size={28} />
+                    <span className="add-relative__person-name">{formatName(person)}</span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </Card>
