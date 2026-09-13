@@ -1,0 +1,284 @@
+/*
+  Navigation shell — Phase 1 redesign.
+
+  Mobile first: every rule here is the phone layout, and the few desktop
+  adjustments are additive at the bottom. The reverse — writing a desktop
+  interface and shrinking it — is what produces cramped phone screens.
+*/
+
+/* ── header ──────────────────────────────────────────────────────── */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  /* Clears a notch without adding space on a device that has none. */
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header__leading,
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.app-header__titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-header__title {
+  font-size: 20px;
+  line-height: 1.25;
+  /* One line, ellipsised: a long family name must not push the menu off. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-header__subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── icon button ─────────────────────────────────────────────────── */
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Never smaller than a fingertip. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-button:hover {
+  background: var(--row-band);
+  color: var(--text);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── page ────────────────────────────────────────────────────────── */
+
+.app-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /*
+    The bottom bar is fixed and the add button floats above it, so without
+    this the last row of a list sits under one or both and the list looks
+    like it simply stopped. 88px clears the button as well as the bar.
+  */
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 88px);
+}
+
+.app-page--flush {
+  /* For the canvas, which manages its own edges. */
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+}
+
+.app-page__inner {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  /* Readable measure on a wide screen; full width on a phone. */
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── bottom navigation ───────────────────────────────────────────── */
+
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.bottom-nav__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: var(--bottom-nav-height);
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.bottom-nav__item--on {
+  color: var(--accent);
+}
+
+.bottom-nav__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: var(--radius-sm);
+}
+
+.bottom-nav__label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── floating action ─────────────────────────────────────────────── */
+
+.fab {
+  position: fixed;
+  right: 16px;
+  /* Above the bar, never overlapping it. */
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-hover);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.fab:hover {
+  background: var(--accent-hover);
+}
+
+.fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ── section header ──────────────────────────────────────────────── */
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-header__title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── empty state ─────────────────────────────────────────────────── */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 48px 24px;
+}
+
+.empty-state__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.empty-state__title {
+  font-size: 22px;
+}
+
+.empty-state__body {
+  max-width: 32ch;
+  color: var(--text-secondary);
+}
+
+.empty-state__action {
+  margin-top: 8px;
+}
+
+/* ── desktop ─────────────────────────────────────────────────────── */
+
+@media (min-width: 768px) {
+  .app-header {
+    padding: 18px 24px;
+  }
+
+  .app-header__title {
+    font-size: 24px;
+  }
+
+  .app-page__inner {
+    padding: 24px;
+    gap: 24px;
+  }
+
+  /*
+    The bar stays, rather than becoming a sidebar. Two destinations do not
+    justify a second navigation pattern to maintain, and a person moving
+    between their phone and a laptop should find the same two words in the
+    same order.
+  */
+  .bottom-nav {
+    max-width: 720px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .fab {
+    right: calc(50% - 360px + 16px);
+  }
+}
+
+@media (max-width: 400px) {
+  .app-page__inner {
+    padding: 12px;
+  }
+}

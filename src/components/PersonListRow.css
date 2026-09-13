@@ -1,0 +1,64 @@
+.person-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  /* Comfortably past the 44px minimum, because this is the row people use most. */
+  min-height: 68px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.person-row:hover {
+  border-color: var(--accent);
+  background: var(--row-band);
+}
+
+.person-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.person-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.person-row__name {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-row__subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-row__chevron {
+  flex: none;
+  display: inline-flex;
+  color: var(--text-secondary);
+}
+
+/* Rows in a list sit flush together as one surface. */
+.person-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

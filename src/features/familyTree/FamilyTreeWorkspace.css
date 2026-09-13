@@ -5,11 +5,25 @@
   flex-direction: column;
 }
 
+/*
+  The bar used by secondary screens — a profile, a form, a family group.
+  Those screens keep their own layout until Phase 3; this gives them the
+  same surface and the same safe-area behaviour as the new header.
+*/
 .workspace__bar {
   display: flex;
   align-items: center;
-  padding: 16px 24px;
+  padding: 14px 16px;
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+@media (min-width: 768px) {
+  .workspace__bar {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
 }
 
 .workspace__brand {
@@ -24,11 +38,4 @@
 
 .workspace__brand:hover {
   color: var(--accent);
-}
-
-.workspace__content {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }

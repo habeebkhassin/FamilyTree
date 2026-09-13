@@ -16,7 +16,18 @@ import { PersonProfile } from '../people/PersonProfile'
 import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../people/personDisplay'
 import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
-import { FamilyTreeHome } from './FamilyTreeHome'
+import { PeopleScreen } from './PeopleScreen'
+import { BackupActions } from './BackupActions'
+import {
+  AppHeader,
+  BottomNavigation,
+  EmptyState,
+  FloatingAddButton,
+  IconButton,
+  type Destination,
+} from '../../components/AppShell'
+import { OverflowItem, OverflowMenu } from '../../components/OverflowMenu'
+import { Button } from '../../components/Button'
 import { useFamilyGraph } from './useFamilyGraph'
 import { useFocalPerson } from './useFocalPerson'
 import './FamilyTreeWorkspace.css'
@@ -37,6 +48,8 @@ type View =
   | { screen: 'createFamilyGroup' }
   | { screen: 'editFamilyGroup'; familyGroupId: string }
   | { screen: 'familyGroupDetail'; familyGroupId: string }
+  /** Backup, restore and who is editing — reached from the header menu. */
+  | { screen: 'settings' }
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -108,9 +121,27 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     setView({ screen: 'home' })
   }
 
-  function openTreeView() {
+  function openSettings() {
+    setView({ screen: 'settings' })
+  }
+
+  /**
+   * Which of the two destinations the bottom bar should show as current.
+   *
+   * A secondary screen reached from People — a profile, a form — still
+   * belongs to People, so the bar does not appear to jump while you are
+   * several steps into something.
+   */
+  const destination: Destination = view.screen === 'tree' ? 'tree' : 'people'
+
+  /** Only the two top-level destinations get the bar and the add button. */
+  const isTopLevel = view.screen === 'home' || view.screen === 'tree'
+
+  function navigate(next: Destination) {
+    // Clears any stale relationship error on the way out, which is what
+    // the old per-screen openers each did for themselves.
     setLinkError(null)
-    setView({ screen: 'tree' })
+    setView(next === 'tree' ? { screen: 'tree' } : { screen: 'home' })
   }
 
   function openProfile(personId: string) {
@@ -210,31 +241,80 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
     openFamilyGroups()
   }
 
+  const headerActions = (
+    <OverflowMenu>
+      <OverflowItem
+        label="Family Groups"
+        description="Branches and households you have named"
+        onClick={openFamilyGroups}
+      />
+      <OverflowItem
+        label="Backup & Sync"
+        description="Save a copy of this family, or restore one"
+        onClick={openSettings}
+      />
+    </OverflowMenu>
+  )
+
   return (
     <div className="workspace">
-      <header className="workspace__bar">
-        <button type="button" className="workspace__brand" onClick={goHome}>
-          {tree.name}
-        </button>
-        <LocalActorBadge onActorChange={() => void policy.reload()} />
-      </header>
+      {isTopLevel ? (
+        <AppHeader
+          title={view.screen === 'tree' ? 'My Family' : 'People'}
+          subtitle={view.screen === 'tree' ? tree.name : undefined}
+          actions={headerActions}
+        />
+      ) : (
+        <header className="workspace__bar">
+          <button type="button" className="workspace__brand" onClick={goHome}>
+            {tree.name}
+          </button>
+          <LocalActorBadge onActorChange={() => void policy.reload()} />
+        </header>
+      )}
 
-      <div className="workspace__content">
+      <div className={view.screen === 'tree' ? 'app-page app-page--flush' : 'app-page'}>
         {view.screen === 'home' && (
-          <FamilyTreeHome
-            tree={tree}
-            people={people}
-            status={status}
-            onAddPerson={() => openCreatePerson()}
-            onOpenPerson={openProfile}
-            onOpenTreeView={openTreeView}
-            onOpenFamilyGroups={openFamilyGroups}
-            onRetry={reload}
-            onImported={onTreeImported}
-          />
+          <div className="app-page__inner">
+            <PeopleScreen
+              people={people}
+              status={status}
+              onOpenPerson={openProfile}
+              onAddPerson={() => openCreatePerson()}
+              onRetry={reload}
+            />
+          </div>
         )}
 
-        {view.screen === 'tree' && (
+        {view.screen === 'settings' && (
+          <div className="app-page__inner">
+            <AppHeader
+              title="Backup & Sync"
+              leading={
+                <IconButton label="Back" onClick={goHome}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </IconButton>
+              }
+            />
+            <LocalActorBadge onActorChange={() => void policy.reload()} />
+            <BackupActions tree={tree} onImported={onTreeImported} />
+          </div>
+        )}
+
+        {view.screen === 'tree' && status === 'ready' && people.length === 0 && (
+          <div className="app-page__inner">
+            <EmptyState
+              title="Start your family tree"
+              body="Add your family members and keep your family history alive."
+              action={<Button onClick={() => openCreatePerson()}>+ Add first person</Button>}
+            />
+          </div>
+        )}
+
+        {view.screen === 'tree' && people.length > 0 && (
           <FamilyTreeCanvas
             people={people}
             parentLinks={parentLinks}
@@ -429,6 +509,21 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
             )
           })()}
       </div>
+
+      {isTopLevel && (
+        <>
+          {/*
+            One obvious action per destination, and only where it means
+            something. An empty family already shows "Add first person" in
+            the middle of the screen, so a second button offering the same
+            thing would only be two ways to do one thing.
+          */}
+          {people.length > 0 && (
+            <FloatingAddButton label="Add a person" onClick={() => openCreatePerson()} />
+          )}
+          <BottomNavigation current={destination} onNavigate={navigate} />
+        </>
+      )}
     </div>
   )
 }

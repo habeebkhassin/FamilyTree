@@ -1,0 +1,61 @@
+.people__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease;
+}
+
+.people__search:focus-within {
+  border-color: var(--accent);
+}
+
+.people__search-icon {
+  display: inline-flex;
+  color: var(--text-secondary);
+  flex: none;
+}
+
+.people__search-input {
+  flex: 1;
+  min-width: 0;
+  /* 44px of target, and 16px of text so iOS does not zoom the page on focus. */
+  min-height: 46px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 16px;
+  outline: none;
+}
+
+.people__search-input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.people__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.people__none {
+  padding: 24px 4px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.people__status {
+  padding: 32px 4px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.people__status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
