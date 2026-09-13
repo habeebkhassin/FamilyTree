@@ -17,16 +17,19 @@ import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../pe
 import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
 import { PeopleScreen } from './PeopleScreen'
+import { MenuScreen } from './MenuScreen'
+import { ViewOptionsScreen } from './ViewOptionsScreen'
+import type { ImplementedView } from '../tree-view/viewTypes'
+import { exportFamilyTree, backupFilename, serialiseBackup } from '../../lib/backup'
 import { BackupActions } from './BackupActions'
 import {
   AppHeader,
   BottomNavigation,
   EmptyState,
-  FloatingAddButton,
   IconButton,
   type Destination,
 } from '../../components/AppShell'
-import { OverflowItem, OverflowMenu } from '../../components/OverflowMenu'
+import { Icon } from '../../components/icons'
 import { Button } from '../../components/Button'
 import { useFamilyGraph } from './useFamilyGraph'
 import { useFocalPerson } from './useFocalPerson'
@@ -48,8 +51,10 @@ type View =
   | { screen: 'createFamilyGroup' }
   | { screen: 'editFamilyGroup'; familyGroupId: string }
   | { screen: 'familyGroupDetail'; familyGroupId: string }
-  /** Backup, restore and who is editing — reached from the header menu. */
+  /** Backup, restore and who is editing — reached from the menu. */
   | { screen: 'settings' }
+  | { screen: 'menu' }
+  | { screen: 'viewOptions' }
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -126,6 +131,27 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
   }
 
   /**
+   * What the tree is showing, and how it is drawn.
+   *
+   * Lifted out of the canvas in Phase 3 so the View options screen can
+   * change it. Presentation state only — nothing here reaches genealogy.
+   */
+  const [treeView, setTreeView] = useState<ImplementedView>('full')
+  const [showGenerations, setShowGenerations] = useState(true)
+  const [showPhotos, setShowPhotos] = useState(true)
+
+  async function handleExport() {
+    const backup = await exportFamilyTree(tree.id)
+    const blob = new Blob([serialiseBackup(backup)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = backupFilename(backup)
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
+  /**
    * Which of the two destinations the bottom bar should show as current.
    *
    * A secondary screen reached from People — a profile, a form — still
@@ -136,6 +162,22 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
 
   /** Only the two top-level destinations get the bar and the add button. */
   const isTopLevel = view.screen === 'home' || view.screen === 'tree'
+
+  /**
+   * Screens that draw their own header — Phase 3.
+   *
+   * They must not also get the workspace bar, or a person's profile
+   * arrives under two title bars: the family's name and then their own.
+   * The screens still on the old bar are the ones Phase 3 did not
+   * redesign, and they keep it until they do.
+   */
+  const bringsOwnHeader =
+    view.screen === 'personProfile' ||
+    view.screen === 'editPerson' ||
+    (view.screen === 'createPerson' && !view.relativeIntent) ||
+    view.screen === 'menu' ||
+    view.screen === 'viewOptions' ||
+    view.screen === 'settings'
 
   function navigate(next: Destination) {
     // Clears any stale relationship error on the way out, which is what
@@ -242,18 +284,9 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
   }
 
   const headerActions = (
-    <OverflowMenu>
-      <OverflowItem
-        label="Family Groups"
-        description="Branches and households you have named"
-        onClick={openFamilyGroups}
-      />
-      <OverflowItem
-        label="Backup & Sync"
-        description="Save a copy of this family, or restore one"
-        onClick={openSettings}
-      />
-    </OverflowMenu>
+    <IconButton label="Menu" onClick={() => setView({ screen: 'menu' })}>
+      {Icon.more({ size: 20 })}
+    </IconButton>
   )
 
   return (
@@ -264,7 +297,16 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
           subtitle={view.screen === 'tree' ? tree.name : undefined}
           actions={headerActions}
         />
-      ) : (
+      ) : view.screen === 'settings' ? (
+        <AppHeader
+          title="Backup & Sync"
+          leading={
+            <IconButton label="Back" onClick={() => setView({ screen: 'menu' })}>
+              {Icon.back({ size: 20 })}
+            </IconButton>
+          }
+        />
+      ) : bringsOwnHeader ? null : (
         <header className="workspace__bar">
           <button type="button" className="workspace__brand" onClick={goHome}>
             {tree.name}
@@ -286,19 +328,31 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
           </div>
         )}
 
+        {view.screen === 'menu' && (
+          <MenuScreen
+            treeName={tree.name}
+            onOpenFamilyGroups={openFamilyGroups}
+            onOpenBackup={openSettings}
+            onExport={() => void handleExport()}
+            onOpenIdentity={openSettings}
+            onBack={goHome}
+          />
+        )}
+
+        {view.screen === 'viewOptions' && (
+          <ViewOptionsScreen
+            activeView={treeView}
+            onChangeView={setTreeView}
+            showGenerations={showGenerations}
+            onChangeShowGenerations={setShowGenerations}
+            showPhotos={showPhotos}
+            onChangeShowPhotos={setShowPhotos}
+            onBack={() => setView({ screen: 'tree' })}
+          />
+        )}
+
         {view.screen === 'settings' && (
           <div className="app-page__inner">
-            <AppHeader
-              title="Backup & Sync"
-              leading={
-                <IconButton label="Back" onClick={goHome}>
-                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </IconButton>
-              }
-            />
             <LocalActorBadge onActorChange={() => void policy.reload()} />
             <BackupActions tree={tree} onImported={onTreeImported} />
           </div>
@@ -331,6 +385,11 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
             claimedPersonId={policy.claimedPersonId}
             shouldPromptForFocus={focal.shouldPromptForFocus}
             onDismissFocusPrompt={focal.dismissPrompt}
+            requestedView={treeView}
+            onChangeView={setTreeView}
+            onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
+            showGenerations={showGenerations}
+            showPhotos={showPhotos}
           />
         )}
 
@@ -517,10 +576,13 @@ export function FamilyTreeWorkspace({ tree, onTreeImported }: FamilyTreeWorkspac
             the middle of the screen, so a second button offering the same
             thing would only be two ways to do one thing.
           */}
-          {people.length > 0 && (
-            <FloatingAddButton label="Add a person" onClick={() => openCreatePerson()} />
-          )}
-          <BottomNavigation current={destination} onNavigate={navigate} />
+          <BottomNavigation
+            current={destination}
+            onNavigate={navigate}
+            {...(people.length > 0
+              ? { onAdd: () => openCreatePerson(), addLabel: 'Add a person' }
+              : {})}
+          />
         </>
       )}
     </div>

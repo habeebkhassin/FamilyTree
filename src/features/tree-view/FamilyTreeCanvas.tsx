@@ -23,6 +23,7 @@ import { computeRanks } from './rank'
 import { resolveRelationships } from '../../lib/relationships/relationshipResolver'
 import { RelationshipPanel } from '../relationships/RelationshipPanel'
 import { IconButton } from '../../components/AppShell'
+import { VIEW_CHOICES } from '../familyTree/viewChoices'
 import { FocusBreadcrumb } from './FocusBreadcrumb'
 import { PersonInspector } from './PersonInspector'
 import type { FamilyNode } from './types'
@@ -54,6 +55,13 @@ interface FamilyTreeCanvasProps {
   claimedPersonId: string | null
   /** Nobody is focused, and the offer to choose has not been waved away. */
   shouldPromptForFocus: boolean
+  /** Which view is showing, and how to change it. Held by the workspace. */
+  requestedView: ImplementedView
+  onChangeView: (view: ImplementedView) => void
+  onOpenViewOptions: () => void
+  /** View options — presentation switches, never genealogy. */
+  showGenerations: boolean
+  showPhotos: boolean
   onDismissFocusPrompt: () => void
 }
 
@@ -69,12 +77,18 @@ const NODE_TYPES = {
 }
 
 /** Short enough that four of them still read as one small control. */
-const VIEW_LABELS: Record<ImplementedView, string> = {
-  full: 'Everyone',
-  'my-family': 'My family',
-  lineage: 'Lineage',
-  descendants: 'Descendants',
-}
+/**
+ * One vocabulary for the views — Phase 3.
+ *
+ * Read from the same list the View options screen offers, rather than
+ * kept here as a second set of names. They had drifted: the button said
+ * "Lineage" while the screen that set it said "Parents and ancestors",
+ * which is two words for one thing in an interface meant to feel like
+ * one application.
+ */
+const VIEW_LABELS: Record<ImplementedView, string> = Object.fromEntries(
+  VIEW_CHOICES.map((choice) => [choice.view, choice.label]),
+) as Record<ImplementedView, string>
 
 /**
  * How small a person's card may be drawn in the Everyone overview, in real
@@ -353,6 +367,11 @@ export function FamilyTreeCanvas({
   claimedPersonId,
   shouldPromptForFocus,
   onDismissFocusPrompt,
+  requestedView,
+  onChangeView,
+  onOpenViewOptions,
+  showGenerations,
+  showPhotos,
 }: FamilyTreeCanvasProps) {
   /**
    * Selection and focus are different things. Selecting asks "who is
@@ -367,7 +386,10 @@ export function FamilyTreeCanvas({
    * but which lens you last used is not, and reopening the tree in a
    * narrowed frame you had forgotten choosing would be disorienting.
    */
-  const [view, setView] = useState<ImplementedView>('full')
+  // The chosen view now lives in the workspace, because the View options
+  // screen sits outside this component and has to be able to change it.
+  const view = requestedView
+  const setView = onChangeView
   // My Family is measured from somebody; with nobody focused there is
   // nothing to measure from, so the toggle is not offered.
   const canUseMyFamily = Boolean(focalPersonId)
@@ -570,7 +592,7 @@ export function FamilyTreeCanvas({
           // exactly as it always was.
           const emphasis = emphasisFor(viewGraph, node.id)
           const familyUnit = familyUnits.get(node.id)
-          if (index === -1 && !isFocal && emphasis === 'primary' && !familyUnit) return node
+          if (index === -1 && !isFocal && emphasis === 'primary' && !familyUnit && showPhotos) return node
 
           return {
             ...node,
@@ -580,12 +602,13 @@ export function FamilyTreeCanvas({
               ...(isFocal && { isFocal: true }),
               ...(emphasis !== 'primary' && { emphasis }),
               ...(familyUnit && { familyUnit }),
+              ...(showPhotos ? {} : { hidePhoto: true }),
             },
           }
         }
         return node
       }),
-    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph, familyUnits],
+    [layoutedNodes, onToggleFamilyGroup, comparisonIds, focalPersonId, viewGraph, familyUnits, showPhotos],
   )
 
   const groupHeaders = useMemo<Node[]>(
@@ -597,9 +620,22 @@ export function FamilyTreeCanvas({
     [layoutedNodes, familyGroups, familyGroupMembers, collapsedGroupIds, onToggleFamilyGroup],
   )
 
+  /*
+    What View options turns on and off — Phase 3.
+
+    Presentation only, and applied at the last moment: the bands and
+    labels are still built and the layout that produced them is untouched,
+    so hiding generations changes what is drawn and nothing about where
+    anybody stands.
+  */
   const displayNodes = useMemo<Node[]>(
-    () => [...generationBands, ...interactiveNodes, ...generationLabels, ...groupHeaders],
-    [generationBands, interactiveNodes, generationLabels, groupHeaders],
+    () => [
+      ...(showGenerations ? generationBands : []),
+      ...interactiveNodes,
+      ...(showGenerations ? generationLabels : []),
+      ...groupHeaders,
+    ],
+    [generationBands, interactiveNodes, generationLabels, groupHeaders, showGenerations],
   )
 
   // Only a person is interactive here. Family groups toggle via their own
@@ -707,24 +743,25 @@ export function FamilyTreeCanvas({
           )}
         </div>
 
+        {/*
+          One button instead of four — Phase 3. The row of view names was
+          the largest thing left above the tree, and three of the four were
+          always switched off. What is showing is named in the button;
+          changing it is a screen, where each choice has room to be a
+          sentence rather than a word.
+        */}
         {canUseMyFamily && (
-          <div className="tree-canvas__views" role="group" aria-label="Which view of the family">
-            {(['full', 'my-family', 'lineage', 'descendants'] as const).map((candidate) => (
-              <button
-                key={candidate}
-                type="button"
-                className={
-                  activeView === candidate
-                    ? 'tree-canvas__view tree-canvas__view--on'
-                    : 'tree-canvas__view'
-                }
-                aria-pressed={activeView === candidate}
-                onClick={() => setView(candidate)}
-              >
-                {VIEW_LABELS[candidate]}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            className="tree-canvas__view-button"
+            onClick={onOpenViewOptions}
+            aria-label={`View: ${VIEW_LABELS[activeView]}. Change what the tree shows`}
+          >
+            <span className="tree-canvas__view-label">{VIEW_LABELS[activeView]}</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         )}
       </div>
 

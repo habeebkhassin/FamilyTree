@@ -89,10 +89,11 @@
   overflow-x: hidden;
   /*
     The bottom bar is fixed and the add button floats above it, so without
-    this the last row of a list sits under one or both and the list looks
-    like it simply stopped. 88px clears the button as well as the bar.
+    this the last row of a list sits underneath it and the list looks like
+    it simply stopped. The add button is inside the bar now, so this only
+    has to clear the bar itself.
   */
-  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 88px);
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
 }
 
 .app-page--flush {
@@ -114,6 +115,39 @@
 }
 
 /* ── bottom navigation ───────────────────────────────────────────── */
+
+/*
+  The add action sits between the two destinations — Phase 3, following
+  the reference. It reads as one group: where you can go, and the one
+  thing you can make. It replaces the corner button, which floated over
+  content and covered a row.
+*/
+.bottom-nav__add {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 8px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-hover);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.bottom-nav__add:hover {
+  background: var(--accent-hover);
+}
+
+.bottom-nav__add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 .bottom-nav {
   position: fixed;
@@ -156,37 +190,6 @@
 .bottom-nav__label {
   font-size: 12px;
   font-weight: 500;
-}
-
-/* ── floating action ─────────────────────────────────────────────── */
-
-.fab {
-  position: fixed;
-  right: 16px;
-  /* Above the bar, never overlapping it. */
-  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
-  z-index: 25;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  box-shadow: var(--shadow-hover);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.fab:hover {
-  background: var(--accent-hover);
-}
-
-.fab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 
 /* ── section header ──────────────────────────────────────────────── */
@@ -272,9 +275,6 @@
     border-radius: var(--radius) var(--radius) 0 0;
   }
 
-  .fab {
-    right: calc(50% - 360px + 16px);
-  }
 }
 
 @media (max-width: 400px) {

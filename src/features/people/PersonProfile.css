@@ -1,120 +1,119 @@
+/*
+  One person — Phase 3.
+
+  A centred hero, a row of labelled actions, then folded sections. Sized
+  for a phone first: nothing here needs a wide screen to make sense, and
+  on a desktop the column stops widening so the text keeps a readable
+  measure rather than stretching across the window.
+*/
 .person-profile {
   flex: 1;
-  max-width: 720px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.person-profile__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 16px 48px;
+  max-width: 640px;
   width: 100%;
   margin: 0 auto;
-  padding: 32px 24px 48px;
+}
+
+.person-profile__hero {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-.person-profile__back {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.person-profile__back:hover {
-  color: var(--accent);
-}
-
-.person-profile__header {
-  display: flex;
   align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.person-profile__identity {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 180px;
+  gap: 10px;
+  text-align: center;
 }
 
 .person-profile__name {
   font-size: 26px;
+  line-height: 1.2;
+  /* A long name wraps rather than being cut: this is the one place on the
+     screen where the whole thing has to be readable. */
+  overflow-wrap: anywhere;
+}
+
+.person-profile__relation {
+  font-size: 15px;
+  color: var(--text-secondary);
 }
 
 .person-profile__badge {
-  align-self: flex-start;
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
-.person-profile__dates {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.person-profile__actions {
-  display: flex;
-  gap: 10px;
-}
-
-.person-profile__section-title {
-  font-size: 16px;
-  margin-bottom: 12px;
-}
-
-.person-profile__notes p {
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-}
-
-@media (max-width: 480px) {
-  .person-profile {
-    padding: 24px 16px 40px;
-  }
-
-  .person-profile__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .person-profile__actions {
-    width: 100%;
-  }
-
-  .person-profile__actions .button {
-    flex: 1;
-  }
 }
 
 .person-profile__policy-note {
-  margin: -4px 0 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.person-profile__claim-state {
-  margin: 0;
+  padding: 10px 14px;
+  background: var(--row-band);
+  border-radius: var(--radius-sm);
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-secondary);
+  text-align: center;
 }
 
-.person-profile__claim-note {
-  margin: 6px 0 0;
+.person-profile__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.person-profile__empty {
+  color: var(--text-secondary);
+  font-size: 15px;
+  padding: 4px 0 8px;
+}
+
+/* one relationship */
+.family-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.family-list:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.family-list__title {
   font-size: 13px;
-  line-height: 1.5;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-secondary);
 }
 
-.person-profile__claim .button {
-  margin-top: 12px;
+.family-list__add {
+  align-self: flex-start;
+  min-height: 44px;
+}
+
+@media (max-width: 400px) {
+  .person-profile__body {
+    padding: 16px 12px 48px;
+  }
+
+  .family-list__add {
+    width: 100%;
+  }
 }

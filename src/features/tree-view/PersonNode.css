@@ -223,13 +223,16 @@
     line-height: 16px;
   }
 
+  /* 12px is the floor anywhere in this interface: below it the family
+     name stops being readable for the people most likely to be reading
+     it. The line heights keep the card at its fixed 64px. */
   .person-node__surname {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 13px;
   }
 
   .person-node__years {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 13px;
   }
 }

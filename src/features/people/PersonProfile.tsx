@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Avatar } from '../../components/Avatar'
 import { Button } from '../../components/Button'
-import { Card } from '../../components/Card'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { AppHeader, IconButton } from '../../components/AppShell'
+import { ActionCard, ActionCircle, DetailRow, Section } from '../../components/Detail'
+import { Icon } from '../../components/icons'
+import { PersonListRow } from '../../components/PersonListRow'
 import type { FamilyGroup } from '../../types'
 import type { Person } from '../../types'
 import { PersonFamilyGroupsCard } from '../familyGroups/PersonFamilyGroupsCard'
@@ -11,7 +14,6 @@ import type { PolicyDecision } from '../../lib/policy/can'
 import { describePolicyReason } from '../policy/policyMessages'
 import { PersonClaimCard } from './PersonClaimCard'
 import { formatFullDate, formatName } from './personDisplay'
-import { RelationshipSection } from './RelationshipSection'
 import type { RelationshipItem, RelationshipKind } from './types'
 import './PersonProfile.css'
 
@@ -34,6 +36,8 @@ export interface PersonPolicyView {
 interface PersonProfileProps {
   person: Person
   policy: PersonPolicyView
+  /** How this person relates to whoever is viewing, when that is known. */
+  relationshipLabel?: string
   parents: RelationshipItem[]
   siblings: RelationshipItem[]
   partners: RelationshipItem[]
@@ -51,9 +55,23 @@ interface PersonProfileProps {
   onCreateFamilyGroup: () => void
 }
 
+/**
+ * One person — Phase 3.
+ *
+ * Reads the way somebody would ask about a relative: who they are, what
+ * you can do about them, the few facts worth knowing, the family around
+ * them, then everything else.
+ *
+ * Progressive disclosure rather than one long wall. Facts and family are
+ * open because that is what people came for; notes and the rest are folded
+ * and say how much is behind them, so nothing is hidden without a trace.
+ * The round actions are labelled in words — an icon alone is a guess, and
+ * this has to work for a reader who has never used software like this.
+ */
 export function PersonProfile({
   person,
   policy,
+  relationshipLabel,
   parents,
   siblings,
   partners,
@@ -71,110 +89,158 @@ export function PersonProfile({
   onCreateFamilyGroup,
 }: PersonProfileProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [showRelationshipChoices, setShowRelationshipChoices] = useState(false)
   const fullName = formatName(person)
+  const familyCount = parents.length + siblings.length + partners.length + children.length
+  const hasBasics = Boolean(person.birthDate || person.deathDate)
 
   return (
     <div className="person-profile">
-      <button type="button" className="person-profile__back" onClick={onBack}>
-        ← Back to family tree
-      </button>
+      <AppHeader
+        title={fullName}
+        subtitle={relationshipLabel}
+        leading={
+          <IconButton label="Back" onClick={onBack}>
+            {Icon.back({ size: 20 })}
+          </IconButton>
+        }
+      />
 
-      <Card className="person-profile__header">
-        <Avatar name={fullName} size={72} />
-        <div className="person-profile__identity">
+      <div className="person-profile__body">
+        <header className="person-profile__hero">
+          <Avatar name={fullName} size={104} />
           <h1 className="person-profile__name">{fullName}</h1>
+          {relationshipLabel && <p className="person-profile__relation">{relationshipLabel}</p>}
           {person.isPlaceholder && <span className="person-profile__badge">Placeholder</span>}
-          <div className="person-profile__dates">
-            {person.birthDate && <span>Born {formatFullDate(person.birthDate)}</span>}
-            {person.deathDate && <span>Died {formatFullDate(person.deathDate)}</span>}
-          </div>
-        </div>
-        <div className="person-profile__actions">
-          <Button
-            variant="secondary"
+        </header>
+
+        <div className="action-row">
+          <ActionCircle
+            label="Edit"
+            icon={Icon.edit({ size: 22 })}
             onClick={onEdit}
             disabled={!policy.canEdit.allowed}
             title={describePolicyReason(policy.canEdit.reason) || undefined}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="danger"
+          />
+          <ActionCircle
+            label="Add family"
+            icon={Icon.branch({ size: 22 })}
+            onClick={() => setShowRelationshipChoices((open) => !open)}
+          />
+          <ActionCircle
+            label="Delete"
+            icon={Icon.trash({ size: 22 })}
             onClick={() => setConfirmingDelete(true)}
             disabled={!policy.canDelete.allowed}
             title={describePolicyReason(policy.canDelete.reason) || undefined}
-          >
-            Delete
-          </Button>
+          />
         </div>
-      </Card>
 
-      {/*
-        Why an action is unavailable, not just that it is. The reason comes
-        from the policy engine so the wording can never drift from the rule.
-      */}
-      {(!policy.canEdit.allowed || !policy.canDelete.allowed) && (
-        <p className="person-profile__policy-note" role="status">
-          {describePolicyReason(policy.canEdit.allowed ? policy.canDelete.reason : policy.canEdit.reason)}
-        </p>
-      )}
+        {/*
+          Why an action is unavailable, not just that it is. The wording
+          comes from the policy engine so it cannot drift from the rule.
+        */}
+        {(!policy.canEdit.allowed || !policy.canDelete.allowed) && (
+          <p className="person-profile__policy-note" role="status">
+            {describePolicyReason(policy.canEdit.allowed ? policy.canDelete.reason : policy.canEdit.reason)}
+          </p>
+        )}
 
-      <PersonClaimCard person={person} fullName={fullName} policy={policy} />
+        {/*
+          The four ways a family grows, said in family words. Each one
+          hands the same intent to the existing relationship engine; none
+          of them knows what a ParentLink or a Union is.
+        */}
+        {showRelationshipChoices && (
+          <div className="person-profile__choices">
+            <ActionCard
+              title="Add parent"
+              description={`Connect a parent to ${person.firstName}`}
+              icon={Icon.branch({ size: 22 })}
+              onClick={() => onAddRelative('parent')}
+            />
+            <ActionCard
+              title="Add spouse or partner"
+              description="Connect two people"
+              icon={Icon.rings({ size: 22 })}
+              onClick={() => onAddRelative('spouse')}
+            />
+            <ActionCard
+              title="Add child"
+              description="Add a child to a couple"
+              icon={Icon.child({ size: 22 })}
+              onClick={() => onAddRelative('child')}
+            />
+            <ActionCard
+              title="Add sibling"
+              description={`Add a brother or sister to ${person.firstName}`}
+              icon={Icon.siblings({ size: 22 })}
+              onClick={() => onAddRelative('sibling')}
+            />
+          </div>
+        )}
 
-      {person.notes && (
-        <Card className="person-profile__notes">
-          <h2 className="person-profile__section-title">Notes</h2>
-          <p>{person.notes}</p>
-        </Card>
-      )}
+        {hasBasics && (
+          <Section title="Basic information" collapsible={false}>
+            {person.birthDate && (
+              <DetailRow icon={Icon.cake()} label="Born" value={formatFullDate(person.birthDate)} />
+            )}
+            {person.deathDate && (
+              <DetailRow icon={Icon.cake()} label="Died" value={formatFullDate(person.deathDate)} />
+            )}
+          </Section>
+        )}
 
-      <Card className="person-profile__family">
-        <h2 className="person-profile__section-title">Family</h2>
+        <Section title="Family" count={familyCount} defaultOpen>
+          <FamilyList
+            title="Parents"
+            items={parents}
+            addLabel="Add parent"
+            onAdd={() => onAddRelative('parent')}
+            onOpenPerson={onOpenPerson}
+          />
+          <FamilyList
+            title="Spouse or partner"
+            items={partners}
+            addLabel="Add spouse or partner"
+            onAdd={() => onAddRelative('spouse')}
+            onOpenPerson={onOpenPerson}
+          />
+          <FamilyList
+            title="Children"
+            items={children}
+            addLabel="Add child"
+            onAdd={() => onAddRelative('child')}
+            onOpenPerson={onOpenPerson}
+          />
+          <FamilyList
+            title="Siblings"
+            items={siblings}
+            addLabel="Add sibling"
+            onAdd={() => onAddRelative('sibling')}
+            onOpenPerson={onOpenPerson}
+          />
+        </Section>
 
-        <RelationshipSection
-          title="Parents"
-          items={parents}
-          emptyMessage="No parents added yet."
-          actionLabel="Add parent"
-          onAdd={() => onAddRelative('parent')}
-          onOpenPerson={onOpenPerson}
-        />
-        <RelationshipSection
-          title="Siblings"
-          items={siblings}
-          emptyMessage="No siblings added yet."
-          actionLabel="Add sibling"
-          onAdd={() => onAddRelative('sibling')}
-          onOpenPerson={onOpenPerson}
-        />
-        <RelationshipSection
-          title="Spouse / Partners"
-          items={partners}
-          emptyMessage="No spouse or partner added yet."
-          actionLabel="Add spouse or partner"
-          onAdd={() => onAddRelative('spouse')}
-          onOpenPerson={onOpenPerson}
-        />
-        <RelationshipSection
-          title="Children"
-          items={children}
-          emptyMessage="No children added yet."
-          actionLabel="Add child"
-          onAdd={() => onAddRelative('child')}
-          onOpenPerson={onOpenPerson}
-        />
-      </Card>
-
-      <PersonFamilyGroupsCard
-        personId={person.id}
-        personName={fullName}
-        memberships={familyGroupMemberships}
-        availableGroups={availableFamilyGroups}
-        onAddToGroup={onAddToFamilyGroup}
-        onRemoveFromGroup={onRemoveFromFamilyGroup}
-        onOpenGroup={onOpenFamilyGroup}
-        onCreateGroup={onCreateFamilyGroup}
-      />
+        <Section title="Notes and more" defaultOpen={Boolean(person.notes)}>
+          {person.notes ? (
+            <DetailRow icon={Icon.note()} label="Notes" value={person.notes} />
+          ) : (
+            <p className="person-profile__empty">Nothing written down yet.</p>
+          )}
+          <PersonClaimCard person={person} fullName={fullName} policy={policy} />
+          <PersonFamilyGroupsCard
+            personId={person.id}
+            personName={fullName}
+            memberships={familyGroupMemberships}
+            availableGroups={availableFamilyGroups}
+            onAddToGroup={onAddToFamilyGroup}
+            onRemoveFromGroup={onRemoveFromFamilyGroup}
+            onOpenGroup={onOpenFamilyGroup}
+            onCreateGroup={onCreateFamilyGroup}
+          />
+        </Section>
+      </div>
 
       {confirmingDelete && (
         <ConfirmDialog
@@ -188,6 +254,42 @@ export function PersonProfile({
           onCancel={() => setConfirmingDelete(false)}
         />
       )}
+    </div>
+  )
+}
+
+/** One relationship, as a short list of people with a way to add another. */
+function FamilyList({
+  title,
+  items,
+  addLabel,
+  onAdd,
+  onOpenPerson,
+}: {
+  title: string
+  items: RelationshipItem[]
+  addLabel: string
+  onAdd: () => void
+  onOpenPerson: (personId: string) => void
+}) {
+  return (
+    <div className="family-list">
+      <h3 className="family-list__title">{title}</h3>
+      {items.length > 0 && (
+        <div className="person-list">
+          {items.map((item) => (
+            <PersonListRow
+              key={item.id}
+              name={formatName(item.person)}
+              subtitle={item.badge}
+              onClick={() => onOpenPerson(item.person.id)}
+            />
+          ))}
+        </div>
+      )}
+      <Button variant="secondary" className="family-list__add" onClick={onAdd}>
+        {addLabel}
+      </Button>
     </div>
   )
 }

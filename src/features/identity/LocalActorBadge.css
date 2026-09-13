@@ -5,7 +5,9 @@
 
 .actor-badge__trigger {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  /* A real touch target: this sits in a header row and was 29px tall. */
+  min-height: 44px;
   gap: 6px;
   background: none;
   border: 1px solid transparent;

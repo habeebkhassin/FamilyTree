@@ -48,7 +48,8 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   return (
     <div className={classes}>
       <Handle type="target" position={Position.Top} />
-      <Avatar name={fullName} size={36} />
+      {/* View options can turn photos off; the initials go with them. */}
+      {data.hidePhoto !== true && <Avatar name={fullName} size={36} />}
       <div className="person-node__info">
         {/* The ring is a shape, not only a colour — and this says the same
             thing to a screen reader, which perceives neither. */}

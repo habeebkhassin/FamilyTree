@@ -75,15 +75,48 @@ export type Destination = 'tree' | 'people'
 export function BottomNavigation({
   current,
   onNavigate,
+  onAdd,
+  addLabel,
 }: {
   current: Destination
   onNavigate: (destination: Destination) => void
+  /** The add action sits between the two destinations, as one group. */
+  onAdd?: () => void
+  addLabel?: string
 }) {
   return (
     <nav className="bottom-nav" aria-label="Main">
       {(
         [
           { id: 'tree', label: 'Tree', icon: <TreeIcon /> },
+        ] as const
+      ).map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={
+            current === item.id ? 'bottom-nav__item bottom-nav__item--on' : 'bottom-nav__item'
+          }
+          aria-current={current === item.id ? 'page' : undefined}
+          onClick={() => onNavigate(item.id)}
+        >
+          <span className="bottom-nav__icon" aria-hidden="true">
+            {item.icon}
+          </span>
+          <span className="bottom-nav__label">{item.label}</span>
+        </button>
+      ))}
+
+      {onAdd && (
+        <button type="button" className="bottom-nav__add" onClick={onAdd} aria-label={addLabel ?? 'Add'}>
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+
+      {(
+        [
           { id: 'people', label: 'People', icon: <PeopleIcon /> },
         ] as const
       ).map((item) => (
@@ -103,34 +136,6 @@ export function BottomNavigation({
         </button>
       ))}
     </nav>
-  )
-}
-
-/**
- * The one obvious thing to do on a screen.
- *
- * Sits above the bottom bar rather than inside it, so the two
- * destinations stay a pair and the action stays an action.
- */
-export function FloatingAddButton({
-  label,
-  onClick,
-}: {
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button type="button" className="fab" onClick={onClick} aria-label={label} title={label}>
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-        <path
-          d="M12 5v14M5 12h14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
   )
 }
 

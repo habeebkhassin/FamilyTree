@@ -48,6 +48,24 @@ export function PeopleScreen({
     return sorted.filter((person) => formatName(person).toLowerCase().includes(needle))
   }, [sorted, query])
 
+  /** First letter of the name people are listed under. */
+  const grouped = useMemo(() => {
+    const ALPHABETISE_ABOVE = 12
+    if (query.trim() || matches.length <= ALPHABETISE_ABOVE) {
+      return [{ letter: '', people: matches }]
+    }
+    const buckets = new Map<string, Person[]>()
+    for (const person of matches) {
+      const letter = (formatName(person)[0] ?? '#').toUpperCase()
+      const bucket = buckets.get(letter)
+      if (bucket) bucket.push(person)
+      else buckets.set(letter, [person])
+    }
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([letter, people]) => ({ letter, people }))
+  }, [matches, query])
+
   if (status === 'loading') {
     return <p className="people__status">Loading your family…</p>
   }
@@ -105,16 +123,28 @@ export function PeopleScreen({
         {matches.length === 0 ? (
           <p className="people__none">Nobody here matches “{query}”.</p>
         ) : (
-          <div className="person-list">
-            {matches.map((person) => (
-              <PersonListRow
-                key={person.id}
-                name={formatName(person)}
-                subtitle={subtitleFor?.(person)}
-                onClick={() => onOpenPerson(person.id)}
-              />
-            ))}
-          </div>
+          /*
+            Grouped by first letter once the list is long enough to need
+            it — Phase 3. Below that it is one short list, because a
+            heading over two names is furniture rather than help. While
+            searching there are no headings at all: the results are
+            already the answer.
+          */
+          grouped.map((group) => (
+            <div key={group.letter} className="people__group">
+              {grouped.length > 1 && <h3 className="people__letter">{group.letter}</h3>}
+              <div className="person-list">
+                {group.people.map((person) => (
+                  <PersonListRow
+                    key={person.id}
+                    name={formatName(person)}
+                    subtitle={subtitleFor?.(person)}
+                    onClick={() => onOpenPerson(person.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </>

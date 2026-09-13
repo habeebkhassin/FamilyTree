@@ -59,3 +59,21 @@
   align-items: flex-start;
   gap: 12px;
 }
+
+.people__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.people__letter {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 2px;
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
