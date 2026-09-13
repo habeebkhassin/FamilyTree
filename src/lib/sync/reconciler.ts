@@ -78,12 +78,19 @@ import type { ChangeEvent, SyncEntity, SyncRecord } from './changeTypes'
  *     device clocks that may disagree. Conflicts decided this way are
  *     marked `resolvedBy: 'createdAt'` so the caller can tell.
  *
- * Both would be closed by one field the event model does not carry: a
- * per-event watermark recording how far the device had synced when it
- * wrote the event, which makes true concurrency decidable. Adding it is
- * deliberately deferred to the backend/sync design rather than invented
- * here, because a watermark is only meaningful once a server exists to
- * define what it counts.
+ * Both are closed, for events that carry one, by `basedOnServerSeq` —
+ * the watermark this file asked for by name, added in Milestone 3 once a
+ * server existed to define what it counts. Where both events have one,
+ * causality is read rather than inferred: see `hadSeen`.
+ *
+ * It closes them only where it is present. An event written before the
+ * watermark existed, or on a tree that has never synced, carries null and
+ * falls back to the behaviour described above — which is the honest
+ * reading of "this device knew nothing", and the reason no historical
+ * event had to be rewritten to introduce it.
+ *
+ * And it changes only which conflicts are REPORTED. The total order below
+ * is untouched, so the merged record is exactly what it always was.
  */
 
 /** How the winner of a field was chosen over the loser. */
@@ -219,6 +226,32 @@ function changedFields(
     if (!valuesEqual(before ? before[key] : undefined, after[key])) changed.push(key)
   }
   return changed.sort(compareStrings)
+}
+
+/**
+ * Whether the author of `later` had already seen `earlier` — Milestone 3.
+ *
+ * The watermark makes this decidable. An event carries the position its
+ * device had synced to when it was written, so if that position is at or
+ * past the sequence `earlier` was given, its author was working on top of
+ * it. That is a sequential edit however the values happen to look.
+ *
+ * Without it, concurrency is inferred by comparing an event's `before`
+ * value with the merged value — which detects VALUE divergence rather
+ * than CAUSAL divergence, and so reports a conflict whenever a field
+ * returns to a value somebody else had already moved away from.
+ *
+ * Deliberately affects only whether a conflict is REPORTED. Which value
+ * wins is still decided by the total order and nothing here touches it,
+ * so a merged record is byte-for-byte what it was before this existed.
+ * Events with no watermark — everything written before Milestone 3, and
+ * everything from a tree that has never synced — answer false and fall
+ * back to the previous behaviour rather than claiming knowledge their
+ * author did not have.
+ */
+function hadSeen(later: ChangeEvent, earlier: ChangeEvent): boolean {
+  if (later.basedOnServerSeq === null || earlier.serverSeq === null) return false
+  return later.basedOnServerSeq >= earlier.serverSeq
 }
 
 /** The total order described at the top of this file. */
@@ -368,7 +401,7 @@ function mergeEntity(
       // not sequential.
       if (!BOOKKEEPING_FIELDS.has(field) && !valuesEqual(base, current)) {
         const loser = lastWriter.get(field)
-        if (loser && loser.id !== event.id) {
+        if (loser && loser.id !== event.id && !hadSeen(event, loser)) {
           conflicts.push({
             entity,
             entityId,

@@ -33,6 +33,7 @@ const event = (id: string): ChangeEvent => ({
   createdAt: AT,
   serverSeq: null,
   recordedAt: null,
+  basedOnServerSeq: null,
 })
 
 test('1. the null adapter reports no trees rather than inventing one', async () => {

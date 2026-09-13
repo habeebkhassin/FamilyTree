@@ -121,6 +121,26 @@ export class FamilyTreeDatabase extends Dexie {
       invitations: 'id, familyTreeId, status, expiresAt',
       governance: 'familyTreeId',
     })
+
+    // Milestone 3: two-way sync.
+    //
+    // Two stores gain an index and nothing else. `changeEvents` gains
+    // `serverSeq` so the events a tree has already had accepted can be
+    // found without scanning, and `outbox` gains `rejectedAt` so the
+    // pending queue can be read without walking the refused ones.
+    //
+    // Additive in the way that matters: no row is rewritten and no field
+    // is removed. Every event written before this has no
+    // `basedOnServerSeq`, which reads as "this device knew nothing",
+    // and every outbox entry has no `rejectedAt`, which reads as "still
+    // pending" — both the correct meaning, so no data migration is
+    // needed. That is the same property the deletedAt migration relied
+    // on in version 3.
+    this.version(5).stores({
+      changeEvents:
+        '++clientSeq, &id, changeSetId, familyTreeId, entity, entityId, [entity+entityId], createdAt, serverSeq',
+      outbox: 'eventId, familyTreeId, createdAt, rejectedAt',
+    })
   }
 }
 

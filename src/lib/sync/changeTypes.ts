@@ -113,6 +113,26 @@ export interface ChangeEvent {
   serverSeq: number | null
   /** Server clock, set when the server accepts the event. Null until then. */
   recordedAt: string | null
+  /**
+   * How far this device had synced when it wrote the event — Milestone 3.
+   *
+   * The watermark the reconciler asked for by name. Without it, whether
+   * two edits were concurrent is inferred by comparing an event's `before`
+   * value against the merged value, which detects VALUE divergence rather
+   * than CAUSAL divergence: a field that returns to an earlier value makes
+   * a genuinely concurrent write look sequential, and with no serverSeq
+   * the only other ordering signal is a device clock.
+   *
+   * With it the question is decidable. An event whose watermark is at or
+   * past another event's serverSeq was written by somebody who had already
+   * seen that event, so the two are sequential however their values look.
+   *
+   * Null on every event written before this existed, and null while a tree
+   * has never synced — both correctly read as "nothing was known", which
+   * falls back to the previous behaviour rather than claiming knowledge
+   * the author did not have.
+   */
+  basedOnServerSeq: number | null
 }
 
 /** clientSeq is assigned by the database on insert, so callers never supply it. */
@@ -130,6 +150,20 @@ export interface OutboxEntry {
   eventId: string
   familyTreeId: string
   createdAt: string
+  /**
+   * Set when the server definitively refused this event — Milestone 3.
+   *
+   * The row STAYS. Deleting a rejected event would lose both the work and
+   * the explanation, and retrying it forever would block everything queued
+   * behind it. So a rejected entry stops being pending, keeps its reason,
+   * and remains something the sync layer and the interface can see and
+   * report.
+   *
+   * Absent means still pending, which is what every entry written before
+   * this existed correctly reads as.
+   */
+  rejectedAt?: string
+  rejectedReason?: string
 }
 
 /**

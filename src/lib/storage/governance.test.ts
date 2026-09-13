@@ -406,7 +406,7 @@ test('20. no governance entity is reachable through the sync entity list', async
 
 // ── Migration ────────────────────────────────────────────────────────
 
-test('21. a real v1 database upgrades through v2, v3 and v4 with every record intact', async () => {
+test('21. a real v1 database upgrades through every later version with each record intact', async () => {
   const dbName = `FamilyTreeDatabase-5b2-migration-${crypto.randomUUID()}`
   const treeId = crypto.randomUUID()
   const parentId = crypto.randomUUID()
@@ -434,10 +434,11 @@ test('21. a real v1 database upgrades through v2, v3 and v4 with every record in
   })
   legacy.close()
 
-  // Reopen through the real application schema, which runs v2, v3 and v4.
+  // Reopen through the real application schema, which runs every
+  // upgrade in turn.
   const upgraded = new FamilyTreeDatabase(dbName)
   await upgraded.open()
-  assert.equal(upgraded.verno, 4, 'the database is now at version 4')
+  assert.equal(upgraded.verno, 5, 'the database is now at version 5')
 
   const tree = await upgraded.familyTrees.get(treeId)
   assert.equal(tree?.name, 'Legacy', 'the pre-existing tree survived untouched')
@@ -452,6 +453,20 @@ test('21. a real v1 database upgrades through v2, v3 and v4 with every record in
   // ungoverned — exactly the state it was in before governance existed.
   assert.equal(await upgraded.familyTreeMembers.where('familyTreeId').equals(treeId).count(), 0)
   assert.equal(await upgraded.personClaims.count(), 0)
+
+  /*
+    Version 5 added sync. A record that predates it has no watermark and
+    no rejection, and both absences read correctly — "this device knew
+    nothing" and "still pending" — which is why no row had to be
+    rewritten to introduce them.
+  */
+  assert.equal(await upgraded.changeEvents.count(), 0, 'a legacy database has no history to carry')
+  assert.equal(await upgraded.outbox.count(), 0)
+  assert.equal(
+    await upgraded.syncState.get(treeId),
+    undefined,
+    'and no sync position was invented for a tree that has never synced',
+  )
   assert.equal(await upgraded.invitations.count(), 0)
   assert.equal(await upgraded.governance.count(), 0)
 

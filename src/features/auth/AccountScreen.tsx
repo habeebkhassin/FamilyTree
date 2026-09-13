@@ -4,6 +4,7 @@ import { DetailRow, Section } from '../../components/Detail'
 import { Icon } from '../../components/icons'
 import { useAuth } from './useAuth'
 import { useCloudTrees } from './useCloudTrees'
+import { useSync } from './useSync'
 import type { CloudTreeStore } from '../../lib/cloud/cloudTrees'
 import './AccountScreen.css'
 
@@ -45,6 +46,9 @@ export function AccountScreen({
   // the cloud rather than kept locally, so a local flag can never claim a
   // tree is saved when it is not.
   const isAdopted = cloud.trees.some((tree) => tree.id === localTreeId)
+
+  // Only a tree that is actually in the account has anything to sync.
+  const sync = useSync({ familyTreeId: localTreeId, isCloudTree: isAdopted })
 
   return (
     <>
@@ -152,7 +156,27 @@ export function AccountScreen({
                   label={isAdopted ? 'Saved to your account' : 'Kept on this device only'}
                   value={localTreeName}
                 />
+                {/*
+                  One line, in ordinary words. A sequence number or a
+                  cursor would mean nothing to somebody looking after
+                  their family's records.
+                */}
+                {isAdopted && (
+                  <DetailRow
+                    icon={Icon.cloud({ size: 20 })}
+                    label="Syncing"
+                    value={sync.detail}
+                  />
+                )}
               </Section>
+
+              {isAdopted && sync.status !== 'syncing' && (
+                <div className="account__action">
+                  <Button variant="secondary" onClick={() => void sync.syncNow()}>
+                    Sync now
+                  </Button>
+                </div>
+              )}
 
               {cloud.error && (
                 <p className="account__error" role="alert">

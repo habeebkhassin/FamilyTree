@@ -10,8 +10,14 @@ import { db } from './db'
  * its change event commit together. Spread into the table list:
  *
  *   db.transaction('rw', [db.people, ...SYNC_TABLES], ...)
+ *
+ * `syncState` is in the list from Milestone 3 because recordChange reads
+ * the tree's cursor to stamp each event with the position this device had
+ * reached. Reading it inside the same transaction is what makes the
+ * watermark atomic with the event rather than a value that could have
+ * moved between the two.
  */
-export const SYNC_TABLES = [db.changeEvents, db.outbox] as const
+export const SYNC_TABLES = [db.changeEvents, db.outbox, db.syncState] as const
 
 /**
  * A record is live unless it carries a tombstone.

@@ -7,6 +7,29 @@ import type {
 } from '../sync/remoteAdapter'
 import type { ChangeEvent, SyncEntity, SyncRecord } from '../sync/changeTypes'
 import type { CloudTreeStore } from './cloudTrees'
+import { fetchHeadSeq, pullEvents, pushEvents } from './supabaseSync'
+
+/**
+ * The event side of the wire.
+ *
+ * Separate from CloudTreeStore because they are two jobs: one reads and
+ * writes whole trees, the other carries events. Both are injected, so the
+ * adapter can be tested end to end without a network — reaching around an
+ * injected collaborator to call a module directly would have made this
+ * class untestable, which is how the split came to be noticed.
+ */
+export interface CloudSyncTransport {
+  headSeq(familyTreeId: string): Promise<number | null>
+  pull(familyTreeId: string, cursor: RemoteCursor): Promise<PullResult>
+  push(familyTreeId: string, events: ChangeEvent[]): Promise<PushResult>
+}
+
+/** The real one, talking to Supabase. */
+export const supabaseSyncTransport: CloudSyncTransport = {
+  headSeq: fetchHeadSeq,
+  pull: pullEvents,
+  push: pushEvents,
+}
 
 /**
  * The cloud, behind the adapter the application already had — Milestone 2.
@@ -17,25 +40,21 @@ import type { CloudTreeStore } from './cloudTrees'
  * to the interface.
  *
  *   listTrees   what this account can reach
- *   bootstrap   one tree's current records, which is what a device
- *               joining downloads — the interface always said this is
- *               materialised rows rather than a replay of history
+ *   bootstrap   one tree's current records plus the position they are
+ *               current as of — materialised rows, never a replay
+ *   pull        events after a cursor, in sequence order
+ *   push        offer this device's queued events
  *
- * The other two are not implemented, and they FAIL rather than return
- * nothing. A `pull` that answered "no events" would be indistinguishable
- * from "you are up to date", and a caller would believe it. Refusing is
- * the honest answer while there is no change log in the cloud to read.
- *
- * The cursor is null everywhere below for the same reason `serverSeq` is
- * null on every event this application has ever written: no server has
- * assigned one yet, and inventing a value would corrupt the ordering that
- * reconciliation will depend on.
+ * All four now, with the interface unchanged from the day it was written
+ * against no backend at all.
  */
 export class CloudRemoteAdapter implements RemoteAdapter {
   readonly #trees: CloudTreeStore
+  readonly #sync: CloudSyncTransport
 
-  constructor(trees: CloudTreeStore) {
+  constructor(trees: CloudTreeStore, sync: CloudSyncTransport = supabaseSyncTransport) {
     this.#trees = trees
+    this.#sync = sync
   }
 
   async listTrees(): Promise<{ familyTreeId: string; name: string }[]> {
@@ -58,25 +77,25 @@ export class CloudRemoteAdapter implements RemoteAdapter {
       })),
     ]
 
-    // Null, and honestly so: there is no change log in the cloud yet, so
-    // there is no sequence these records could be "current as of".
-    return { records, cursor: { lastServerSeq: null } }
+    /*
+      Read AFTER the rows, deliberately.
+
+      A sequence taken first could name a position later than the rows
+      reflect if an event landed in between, and the device would then
+      skip it forever. Taken afterwards, the worst case is a position
+      slightly BEHIND the rows — which costs one harmless re-application
+      of an event already reflected, because applying a remote event
+      twice is the same as applying it once.
+    */
+    const head = await this.#sync.headSeq(familyTreeId)
+    return { records, cursor: { lastServerSeq: head } }
   }
 
-  async pull(_familyTreeId: string, _cursor: RemoteCursor): Promise<PullResult> {
-    throw new Error('Downloading changes arrives with synchronisation, in a later milestone.')
+  async pull(familyTreeId: string, cursor: RemoteCursor): Promise<PullResult> {
+    return this.#sync.pull(familyTreeId, cursor)
   }
 
-  async push(_familyTreeId: string, events: ChangeEvent[]): Promise<PushResult> {
-    // Reported as rejected rather than thrown, matching NullRemoteAdapter:
-    // a caller draining an outbox must be able to see that nothing was
-    // accepted without the drain itself blowing up.
-    return {
-      accepted: [],
-      rejected: events.map((event) => ({
-        eventId: event.id,
-        reason: 'Uploading changes arrives with synchronisation, in a later milestone.',
-      })),
-    }
+  async push(familyTreeId: string, events: ChangeEvent[]): Promise<PushResult> {
+    return this.#sync.push(familyTreeId, events)
   }
 }

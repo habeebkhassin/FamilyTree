@@ -31,6 +31,21 @@ export interface RecordChangeInput {
  */
 export async function recordChange(input: RecordChangeInput): Promise<void> {
   const createdAt = new Date().toISOString()
+
+  /*
+    How far this device had synced when the change was made — Milestone 3.
+
+    Read from Dexie inside the caller's transaction, which is why
+    `db.syncState` joined SYNC_TABLES. Awaiting a DEXIE promise stays
+    inside the transaction zone; it is only a non-Dexie promise that would
+    leave it. So the watermark is captured atomically with the event, and
+    there is no window in which an event is written against a cursor that
+    has since moved.
+
+    Null when the tree has never synced, which is the honest reading of
+    "this device knew nothing".
+  */
+  const syncState = await db.syncState.get(input.familyTreeId)
   // Synchronous by design: this runs inside the caller's Dexie transaction,
   // and awaiting a non-Dexie promise here would leave the transaction zone
   // and break the record/event/outbox atomicity guarantee. Resolves to null
@@ -55,6 +70,7 @@ export async function recordChange(input: RecordChangeInput): Promise<void> {
     // would corrupt the ordering later reconciliation depends on.
     serverSeq: null,
     recordedAt: null,
+    basedOnServerSeq: syncState?.lastServerSeq ?? null,
   }
 
   // clientSeq is the autoincrement primary key, so Dexie fills it in.

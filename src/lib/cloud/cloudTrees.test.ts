@@ -7,6 +7,7 @@ import { createPerson } from '../storage/people'
 import { createParentLink } from '../storage/relationships'
 import { adoptLocalTree } from './adoptTree'
 import { CloudRemoteAdapter } from './cloudRemoteAdapter'
+import type { CloudSyncTransport } from './cloudRemoteAdapter'
 import { NoCloudTreeStore } from './cloudTrees'
 import type { AdoptableTree, CloudTreeContents, CloudTreeStore, CloudTreeSummary } from './cloudTrees'
 import { NullRemoteAdapter } from '../sync/remoteAdapter'
@@ -46,6 +47,19 @@ class FakeCloud implements CloudTreeStore {
     if (!adopted) throw new Error('That family tree is not available to your account.')
     return adopted
   }
+}
+
+/** A transport that carries nothing, for the tree-shaped tests. */
+const emptyTransport: CloudSyncTransport = {
+  async headSeq() {
+    return 7
+  },
+  async pull(_treeId, cursor) {
+    return { events: [], cursor, hasMore: false }
+  },
+  async push(_treeId, events) {
+    return { accepted: events.map((event) => ({ ...event, serverSeq: 1, recordedAt: 'x' })), rejected: [] }
+  },
 }
 
 async function seedLocalFamily() {
@@ -168,7 +182,7 @@ test('the adapter lists what the account can reach', async () => {
     { id: 't2', name: 'Adeyemi Family', role: 'viewer', updatedAt: '2026-01-02T00:00:00.000Z' },
   ]
 
-  const adapter = new CloudRemoteAdapter(cloud)
+  const adapter = new CloudRemoteAdapter(cloud, emptyTransport)
   assert.deepEqual(await adapter.listTrees(), [
     { familyTreeId: 't1', name: 'Okafor Family' },
     { familyTreeId: 't2', name: 'Adeyemi Family' },
@@ -180,7 +194,7 @@ test('bootstrap returns materialised records, not a replay', async () => {
   const cloud = new FakeCloud()
   await adoptLocalTree(tree.id, cloud)
 
-  const adapter = new CloudRemoteAdapter(cloud)
+  const adapter = new CloudRemoteAdapter(cloud, emptyTransport)
   const result = await adapter.bootstrap(tree.id)
 
   const entities = result.records.map((entry) => entry.entity)
@@ -189,27 +203,45 @@ test('bootstrap returns materialised records, not a replay', async () => {
   assert.equal(entities.filter((entity) => entity === 'parentLink').length, 1)
   assert.equal(
     result.cursor.lastServerSeq,
-    null,
-    'no sequence is invented while there is no change log in the cloud',
+    7,
+    'the cursor is the position the server reports, read after the rows',
   )
 })
 
 test('bootstrap refuses a tree the account cannot reach', async () => {
-  const adapter = new CloudRemoteAdapter(new FakeCloud())
+  const adapter = new CloudRemoteAdapter(new FakeCloud(), emptyTransport)
   await assert.rejects(() => adapter.bootstrap('someone-elses-tree'), /not available to your account/i)
 })
 
-test('sync itself refuses rather than reporting nothing to do', async () => {
-  const adapter = new CloudRemoteAdapter(new FakeCloud())
-  await assert.rejects(
-    () => adapter.pull('t1', { lastServerSeq: null }),
-    /later milestone/i,
-    'answering "no events" would be read as "you are up to date"',
-  )
+test('the adapter carries events through its transport', async () => {
+  const adapter = new CloudRemoteAdapter(new FakeCloud(), emptyTransport)
 
-  const push = await adapter.push('t1', [
+  const pulled = await adapter.pull('t1', { lastServerSeq: null })
+  assert.deepEqual(pulled.events, [], 'nothing newer, which is a real answer')
+
+  const pushed = await adapter.push('t1', [
     { id: 'e1' } as unknown as Parameters<CloudRemoteAdapter['push']>[1][number],
   ])
-  assert.equal(push.accepted.length, 0)
-  assert.match(push.rejected[0]?.reason ?? '', /later milestone/i)
+  assert.equal(pushed.accepted.length, 1)
+  assert.equal(pushed.accepted[0]?.serverSeq, 1, 'and the server sequence comes back on it')
+})
+
+test('a transport failure stays a failure', async () => {
+  const failing: CloudSyncTransport = {
+    async headSeq() {
+      throw new Error('Failed to fetch')
+    },
+    async pull() {
+      throw new Error('Failed to fetch')
+    },
+    async push() {
+      throw new Error('Failed to fetch')
+    },
+  }
+  const adapter = new CloudRemoteAdapter(new FakeCloud(), failing)
+  await assert.rejects(
+    () => adapter.pull('t1', { lastServerSeq: null }),
+    /Failed to fetch/,
+    'never turned into an empty list, which a caller would record as progress',
+  )
 })
