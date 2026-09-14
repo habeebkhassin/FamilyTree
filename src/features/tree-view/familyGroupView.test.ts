@@ -4,7 +4,6 @@ import assert from 'node:assert/strict'
 
 import { buildFamilyGraph } from './graphAdapter'
 import { computeRanks } from './rank'
-import { projectFamilyGroups } from './groupProjection'
 import { projectFamilyTreeView } from './viewProjection'
 import type { FamilyGroup, FamilyGroupMember, ParentLink, Person, Union } from '../../types'
 
@@ -149,60 +148,99 @@ test('no edge is left pointing at somebody out of frame', () => {
 
 // ── the merged view ─────────────────────────────────────────────────
 
-test('the merged view holds both families, joined by the marriage', () => {
+/** Both families' members together — what the merged view frames. */
+const BOTH = new Set([...memberIdsOf(MY.id), ...memberIdsOf(HERS.id)])
+
+test('the merged view draws people, not two family cards', () => {
+  /*
+    The first attempt collapsed each family into a single card, which
+    turned a family tree into two boxes and a line and made a FamilyGroup
+    look like a participant in the genealogy. A family is a label on
+    people, not a node between them.
+  */
   const { graph, ranks } = build()
-  const full = projectFamilyTreeView(graph, ranks, { view: 'full' })
-  const merged = projectFamilyGroups(
-    full,
-    [MY, HERS],
-    MEMBERS,
-    new Set([MY.id, HERS.id]),
-    ranks,
-  )
+  const merged = projectFamilyTreeView(graph, ranks, {
+    view: 'family-group',
+    familyGroup: { memberIds: BOTH },
+  })
 
-  const groupNodes = merged.nodes.filter((node) => node.type === 'familyGroup')
-  assert.deepEqual(groupNodes.map((node) => node.id).sort(), ['group:hers', 'group:my'])
-
-  // Both sides keep their own identity and their own size.
-  const sizes = new Map(
-    groupNodes.map((node) => [node.id, (node.data as { memberCount: number }).memberCount]),
+  assert.equal(
+    merged.nodes.filter((node) => node.type === 'familyGroup').length,
+    0,
+    'no family-group node is part of the tree',
   )
-  assert.equal(sizes.get('group:my'), 3)
-  assert.equal(sizes.get('group:hers'), 3)
+  const people = merged.nodes.filter((node) => node.type === 'person').map((node) => node.id).sort()
+  assert.deepEqual(people, ['ahmed', 'fatima', 'hassan', 'ibrahim', 'naseema', 'sameera'])
 })
 
-test('the descendants of the connecting marriage are still in the merged view', () => {
+test('no edge ever points at a family', () => {
   const { graph, ranks } = build()
-  const full = projectFamilyTreeView(graph, ranks, { view: 'full' })
-  const merged = projectFamilyGroups(full, [MY, HERS], MEMBERS, new Set([MY.id, HERS.id]), ranks)
+  const merged = projectFamilyTreeView(graph, ranks, {
+    view: 'family-group',
+    familyGroup: { memberIds: BOTH },
+  })
+  for (const edge of merged.edges) {
+    assert.ok(!edge.source.startsWith('group:'), `edge from a family: ${edge.id}`)
+    assert.ok(!edge.target.startsWith('group:'), `edge to a family: ${edge.id}`)
+  }
+})
 
-  // Habeeb belongs to no group, so he is nobody's to absorb — he stays
-  // his own card, below the marriage he came from.
-  assert.ok(merged.nodes.some((node) => node.id === 'habeeb'))
-  assert.ok(
-    (ranks.get('habeeb') ?? 0) > (ranks.get('hassan') ?? 0),
-    'and in the generation below his parents',
-  )
+test('the marriage between the two families survives as the bridge', () => {
+  const { graph, ranks } = build()
+  const merged = projectFamilyTreeView(graph, ranks, {
+    view: 'family-group',
+    familyGroup: { memberIds: BOTH },
+  })
+
+  const bridge = merged.nodes.find((node) => node.id === 'junction:u-bridge')
+  assert.ok(bridge, 'the connecting marriage is drawn')
+
+  // And it still joins the two people it always joined.
+  const partners = merged.edges
+    .filter((edge) => edge.id.startsWith('u-bridge#'))
+    .flatMap((edge) => [edge.source, edge.target])
+  assert.ok(partners.includes('hassan') && partners.includes('sameera'))
+})
+
+test('both families are present, and each person exactly once', () => {
+  const { graph, ranks } = build()
+  const merged = projectFamilyTreeView(graph, ranks, {
+    view: 'family-group',
+    familyGroup: { memberIds: BOTH },
+  })
+
+  const ids = merged.nodes.map((node) => node.id)
+  assert.equal(new Set(ids).size, ids.length, 'nobody is duplicated to appear on both sides')
+  for (const id of ['ahmed', 'fatima', 'hassan']) assert.ok(ids.includes(id), `${id} missing`)
+  for (const id of ['ibrahim', 'naseema', 'sameera']) assert.ok(ids.includes(id), `${id} missing`)
 })
 
 test('merging is a view: it creates no person, link or union', () => {
   const { graph, ranks } = build()
-  const full = projectFamilyTreeView(graph, ranks, { view: 'full' })
   const before = {
-    people: PEOPLE.length,
-    links: LINKS.length,
-    unions: UNIONS.length,
-    members: MEMBERS.length,
+    people: PEOPLE.length, links: LINKS.length, unions: UNIONS.length, members: MEMBERS.length,
+    nodes: graph.nodes.length, edges: graph.edges.length,
   }
 
-  projectFamilyGroups(full, [MY, HERS], MEMBERS, new Set([MY.id, HERS.id]), ranks)
+  projectFamilyTreeView(graph, ranks, { view: 'family-group', familyGroup: { memberIds: BOTH } })
 
   assert.deepEqual(
-    { people: PEOPLE.length, links: LINKS.length, unions: UNIONS.length, members: MEMBERS.length },
+    {
+      people: PEOPLE.length, links: LINKS.length, unions: UNIONS.length, members: MEMBERS.length,
+      nodes: graph.nodes.length, edges: graph.edges.length,
+    },
     before,
-    'the records are exactly what they were',
+    'the records and the canonical graph are exactly what they were',
   )
-  assert.equal(graph.nodes.length, buildFamilyGraph(PEOPLE, LINKS, UNIONS).nodes.length)
+})
+
+test('the merged view never re-ranks either family', () => {
+  const { graph, ranks } = build()
+  const merged = projectFamilyTreeView(graph, ranks, {
+    view: 'family-group',
+    familyGroup: { memberIds: BOTH },
+  })
+  assert.equal(merged.ranks, ranks)
 })
 
 // ── the ordinary tree is untouched ──────────────────────────────────

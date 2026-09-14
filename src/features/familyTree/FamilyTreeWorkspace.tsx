@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import type { FamilyTree, Person } from '../../types'
+import type { FamilyGroup, FamilyTree, Person } from '../../types'
 import { DuplicateRelationshipError, InvalidRelationshipError } from '../../lib/storage'
 import { FamilyGroupDetail } from '../familyGroups/FamilyGroupDetail'
 import type { FamilyGroupMembership } from '../familyGroups/FamilyGroupDetail'
@@ -104,6 +104,20 @@ type View =
 /** Nothing collapsed. A module constant so it keeps its identity between renders. */
 const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set<string>()
 
+/**
+ * No family groups, for the screens that must show only people.
+ *
+ * The connected-family and merged screens draw person cards, parent and
+ * child links and marriages — and nothing else. Passing the groups would
+ * bring back their headers and dotted containers, which read as a family
+ * being a THING IN the tree rather than a label on the people in it, and
+ * that is precisely what these screens exist to avoid.
+ *
+ * Membership still decides who is drawn; it arrives through
+ * restrictToFamilyGroup, worked out before the canvas is asked.
+ */
+const NO_FAMILY_GROUPS: FamilyGroup[] = []
+
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
   if (error instanceof InvalidRelationshipError) return error.message
@@ -197,10 +211,28 @@ export function FamilyTreeWorkspace({
    */
   const [openConnection, setOpenConnection] = useState<FamilyConnection | null>(null)
 
-  /** Both sides of a bridge, collapsed — the merged view's two cards. */
-  const mergedCollapsedIds = useCallback(
-    (connection: FamilyConnection) => new Set([connection.nearGroupId, connection.farGroupId]),
-    [],
+  /**
+   * The merged view's membership, and which side each person is on.
+   *
+   * Both families' members together, drawn as ORDINARY PERSON CARDS.
+   * Collapsing each family into a single card — which is what this did at
+   * first — turns a family tree into two boxes and a line, and makes a
+   * family look like a participant in the genealogy rather than a label
+   * on the people in it. The two sides are told apart by a tint, which
+   * costs no node and no edge.
+   */
+  const mergedFamilies = useCallback(
+    (connection: FamilyConnection) => {
+      const home = familyGroupMemberIds(familyGroupMembers, connection.nearGroupId)
+      const connected = familyGroupMemberIds(familyGroupMembers, connection.farGroupId)
+      const sides = new Map<string, 'home' | 'connected'>()
+      for (const id of home) sides.set(id, 'home')
+      // Somebody in both families keeps the side they were reached from,
+      // rather than flickering between two tints.
+      for (const id of connected) if (!sides.has(id)) sides.set(id, 'connected')
+      return { memberIds: new Set([...home, ...connected]), sides }
+    },
+    [familyGroupMembers],
   )
   /**
    * The tree is where the application opens.
@@ -720,7 +752,7 @@ export function FamilyTreeWorkspace({
                   people={people}
                   parentLinks={parentLinks}
                   unions={unions}
-                  familyGroups={familyGroups}
+                  familyGroups={NO_FAMILY_GROUPS}
                   familyGroupMembers={familyGroupMembers}
                   collapsedGroupIds={NO_COLLAPSED_GROUPS}
                   onToggleFamilyGroup={toggleFamilyGroup}
@@ -776,25 +808,59 @@ export function FamilyTreeWorkspace({
             const { connection } = view
             const nearName = familyGroupName(familyGroups, connection.nearGroupId)
             const farName = familyGroupName(familyGroups, connection.farGroupId)
+            const merged = mergedFamilies(connection)
             return (
               <>
+                {/*
+                  Which side is which, said once at the top instead of by
+                  collapsing each family into a card in the tree. These are
+                  headers over the canvas, not nodes in it — no edge
+                  reaches them and the layout never sees them.
+                */}
+                <div className="merged-heads">
+                  <div className="merged-heads__side merged-heads__side--home">
+                    <span className="merged-heads__name">{nearName}</span>
+                    <span className="merged-heads__meta">
+                      Your family ·{' '}
+                      {familyGroupSize(familyGroupMembers, connection.nearGroupId)} members
+                    </span>
+                  </div>
+                  <span className="merged-heads__bond" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16">
+                      <g fill="none" stroke="currentColor" strokeWidth="1.9">
+                        <circle cx="9.5" cy="12" r="5" />
+                        <circle cx="14.5" cy="12" r="5" />
+                      </g>
+                    </svg>
+                  </span>
+                  <div className="merged-heads__side merged-heads__side--connected">
+                    <span className="merged-heads__name">{farName}</span>
+                    <span className="merged-heads__meta">
+                      {familyGroupSize(familyGroupMembers, connection.farGroupId)} members
+                    </span>
+                  </div>
+                </div>
                 <FamilyTreeCanvas
                   people={people}
                   parentLinks={parentLinks}
                   unions={unions}
-                  familyGroups={familyGroups}
+                  familyGroups={NO_FAMILY_GROUPS}
                   familyGroupMembers={familyGroupMembers}
-                  collapsedGroupIds={mergedCollapsedIds(connection)}
+                  // Nothing collapsed: both families are drawn as the
+                  // people they are.
+                  collapsedGroupIds={NO_COLLAPSED_GROUPS}
                   onToggleFamilyGroup={toggleFamilyGroup}
                   onSelectPerson={openProfile}
                   focalPersonId={undefined}
+                  familySideById={merged.sides}
+                  restrictToFamilyGroup={{ memberIds: merged.memberIds }}
                   onFocusPerson={focal.focusOn}
                   focusHistory={focal.history}
                   onFocusBack={focal.goBack}
                   claimedPersonId={policy.claimedPersonId}
                   shouldPromptForFocus={false}
                   onDismissFocusPrompt={focal.dismissPrompt}
-                  requestedView="full"
+                  requestedView="family-group"
                   onChangeView={setTreeView}
                   onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
                   showGenerations={showGenerations}

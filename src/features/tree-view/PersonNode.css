@@ -304,3 +304,21 @@
     0 0 0 4px var(--accent-bg),
     var(--shadow-hover);
 }
+
+/* ── two families drawn together ───────────────────────────────────
+   Used ONLY in the merged view. A tint and a hairline, not a container:
+   the point is to be able to tell at a glance which side somebody is
+   from, without either family looking like a different kind of thing. */
+.person-node--family-home {
+  border-color: var(--accent-border);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.person-node--family-connected {
+  border-color: var(--group-border);
+  box-shadow: inset 3px 0 0 var(--group-accent);
+}
+
+.person-node--family-connected .person-node__name {
+  color: inherit;
+}

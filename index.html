@@ -6,6 +6,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="A private, local-first family tree and memory app." />
     <title>Family Tree</title>
+    <!--
+      The theme, before anything is painted.
+
+      Blocking and inline on purpose. Anywhere later — a module, a React
+      effect — and the browser has already painted the default palette
+      once, so somebody who chose dark watches a white page flash before
+      their choice arrives. Here it is applied before the stylesheet has
+      been applied to anything, which is the only place it cannot be seen.
+
+      Deliberately tiny and self-contained: it reads one key and sets one
+      attribute. It touches no application state and knows nothing about
+      signing in, so the startup sequence is exactly what it was.
+
+      "System" writes nothing at all — the media query in index.css is
+      already following the device, and the ABSENCE of the attribute is
+      what leaves it in charge.
+    -->
+    <script>
+      ;(function () {
+        try {
+          var choice = localStorage.getItem('familytree.theme')
+          if (choice === 'light' || choice === 'dark') {
+            document.documentElement.setAttribute('data-theme', choice)
+            document.documentElement.style.setProperty('color-scheme', choice)
+          }
+        } catch (error) {
+          /* Blocked storage. Following the device is still correct. */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

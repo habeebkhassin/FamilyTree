@@ -34,6 +34,7 @@
   --accent-hover: #0c6459;
   --accent-contrast: #ffffff;
   --accent-bg: rgba(15, 123, 108, 0.1);
+  --accent-border: rgba(15, 123, 108, 0.35);
 
   --danger: #b3453f;
   --danger-hover: #973833;
@@ -76,8 +77,30 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+  THREE STATES, NOT TWO.
+
+  A person can be following their device, or they can have said "always
+  light" or "always dark" — and the third is not the absence of the other
+  two. So the dark palette is declared twice, against different questions:
+
+    1. the media query, for everyone who has NOT chosen. It is guarded
+       with :not([data-theme="light"]) so somebody who asked for light
+       keeps it on a dark phone;
+
+    2. [data-theme="dark"], so somebody who asked for dark keeps it on a
+       light phone.
+
+  Only tokens are redefined. Nothing below this block asks which theme is
+  showing, which is what keeps the whole interface — canvas, cards,
+  sheets, bars and all — changing from one place.
+
+  "System" removes the attribute entirely rather than writing the resolved
+  value, so the media query stays in charge and keeps following the device
+  while the application is open.
+*/
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #141716;
     --surface: #1c201e;
     --surface-raised: #222725;
@@ -88,6 +111,7 @@
     --accent-hover: #67c4b2;
     --accent-contrast: #0a1a17;
     --accent-bg: rgba(79, 179, 160, 0.16);
+    --accent-border: rgba(79, 179, 160, 0.4);
     --danger: #e08d88;
     --danger-hover: #eaa5a1;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -98,6 +122,39 @@
     --group-bg: rgba(169, 154, 224, 0.14);
     --group-border: rgba(169, 154, 224, 0.3);
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #141716;
+  --surface: #1c201e;
+  --surface-raised: #222725;
+  --border: #2e3432;
+  --text: #eef1ef;
+  --text-secondary: #9aa4a0;
+  --accent: #4fb3a0;
+  --accent-hover: #67c4b2;
+  --accent-contrast: #0a1a17;
+  --accent-bg: rgba(79, 179, 160, 0.16);
+  --accent-border: rgba(79, 179, 160, 0.4);
+  --danger: #e08d88;
+  --danger-hover: #eaa5a1;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 2px 10px rgba(0, 0, 0, 0.45);
+  --row-band: rgba(255, 255, 255, 0.03);
+  --danger-bg: rgba(224, 141, 136, 0.14);
+  --group-accent: #a99ae0;
+  --group-bg: rgba(169, 154, 224, 0.14);
+  --group-border: rgba(169, 154, 224, 0.3);
+}
+
+/* The browser's own furniture — scrollbars, form controls, the canvas
+   behind the page — follows the choice too. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {

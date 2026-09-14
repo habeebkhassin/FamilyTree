@@ -1,0 +1,128 @@
+/* Appearance — one decision, three answers, in the same card language as
+   the rest of More. */
+.theme-setting {
+  margin-bottom: 20px;
+}
+
+.theme-setting__heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.theme-setting__card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.theme-setting__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.theme-setting__label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.theme-setting__hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.theme-setting__options {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-setting__option {
+  display: flex;
+  min-height: 44px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-setting__option:hover {
+  color: var(--text);
+}
+
+.theme-setting__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Selected: border, ground and text all move together, so it does not
+   rest on colour alone. */
+.theme-setting__option--on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* A two-tone chip showing what each option paints. Fixed colours on
+   purpose: it is a picture of the choice, not a thing the theme tints. */
+.theme-setting__swatch {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.theme-setting__swatch[data-theme-preview='light'] {
+  background: #ffffff;
+}
+
+.theme-setting__swatch[data-theme-preview='dark'] {
+  background: #1c201e;
+}
+
+.theme-setting__swatch[data-theme-preview='system'] {
+  background: linear-gradient(90deg, #ffffff 0 50%, #1c201e 50% 100%);
+}
+
+.theme-setting__following {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.theme-setting__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Narrow phones: the three still fit, just tighter. */
+@media (max-width: 360px) {
+  .theme-setting__option {
+    gap: 5px;
+    font-size: 13px;
+  }
+}

@@ -78,6 +78,14 @@ interface FamilyTreeCanvasProps {
    */
   highlightPersonId?: string | null
   /**
+   * Person id -> which family they are on, for the merged view only.
+   *
+   * A tint, nothing more. It adds no node, no edge and no grouping, and
+   * it is absent on every other screen — which is why drawing two
+   * families together does not turn either of them into a container.
+   */
+  familySideById?: ReadonlyMap<string, 'home' | 'connected'>
+  /**
    * The person the tree is currently being explored from. Centers the
    * viewport on them instead of fitting everything, and gives their card
    * a halo. Purely a viewpoint — it takes no part in building the graph,
@@ -517,6 +525,7 @@ export function FamilyTreeCanvas({
   familyNameById,
   restrictToFamilyGroup,
   highlightPersonId,
+  familySideById,
   focalPersonId,
   onFocusPerson,
   focusHistory,
@@ -876,12 +885,14 @@ export function FamilyTreeCanvas({
           // exactly as it always was.
           const emphasis = emphasisFor(viewGraph, node.id)
           const familyUnit = familyUnits.get(node.id)
+          const familySide = familySideById?.get(node.id)
           const hiddenChildren = hiddenChildCountByParentId.get(node.id) ?? 0
           if (
             index === -1 &&
             !isFocal &&
             emphasis === 'primary' &&
             !familyUnit &&
+            !familySide &&
             showPhotos &&
             hiddenChildren === 0
           )
@@ -895,6 +906,7 @@ export function FamilyTreeCanvas({
               ...(isFocal && { isFocal: true }),
               ...(emphasis !== 'primary' && { emphasis }),
               ...(familyUnit && { familyUnit }),
+              ...(familySide && { familySide }),
               ...(showPhotos ? {} : { hidePhoto: true }),
               ...(hiddenChildren > 0 && {
                 hiddenChildCount: hiddenChildren,
@@ -916,6 +928,7 @@ export function FamilyTreeCanvas({
       hiddenChildCountByParentId,
       revealChildrenOf,
       highlightPersonId,
+      familySideById,
       connectionByUnionId,
       familyNameById,
       onOpenConnection,

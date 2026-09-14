@@ -3,6 +3,16 @@ import type { FamilyGroup, ParentRelationship, Person, UnionStatus } from '../..
 
 export interface PersonNodeData extends Record<string, unknown> {
   person: Person
+  /**
+   * Which side of a merged view this person stands on — set ONLY in that
+   * view, and presentation only.
+   *
+   * It says nothing about kinship and creates no grouping: it is a tint
+   * so that two families drawn together can still be told apart at a
+   * glance. Everywhere else it is absent and every card is drawn the way
+   * it always was.
+   */
+  familySide?: 'home' | 'connected'
 }
 
 export type PersonNode = Node<PersonNodeData, 'person'>

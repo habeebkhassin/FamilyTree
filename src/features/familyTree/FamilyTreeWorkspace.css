@@ -68,3 +68,69 @@
     transform: translateX(-50%);
   }
 }
+
+/* ── the merged view's two family headers ──────────────────────────
+   Over the canvas, never in it: no edge reaches these and the layout
+   never sees them, which is what keeps a family from reading as a
+   participant in the genealogy. */
+.merged-heads {
+  /* In flow rather than over the canvas: absolutely positioned inside the
+     workspace it sat behind the app bar, and the canvas is the one thing
+     on this screen that should own its own space. */
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.merged-heads__side {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.merged-heads__side--home {
+  border-color: var(--accent-border);
+  box-shadow: inset 3px 0 0 var(--accent), var(--shadow);
+}
+
+.merged-heads__side--connected {
+  border-color: var(--group-border);
+  box-shadow: inset 3px 0 0 var(--group-accent), var(--shadow);
+}
+
+.merged-heads__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merged-heads__meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.merged-heads__bond {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}

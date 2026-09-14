@@ -48,9 +48,15 @@ export function PersonNode({ data, selected }: NodeProps<PersonNodeType>) {
   const onRevealChildren =
     typeof data.onRevealChildren === 'function' ? (data.onRevealChildren as () => void) : null
 
+  // Presentation only, and only in the merged view: which family this
+  // person belongs to, so two families drawn together stay legible.
+  const familySide =
+    data.familySide === 'home' || data.familySide === 'connected' ? data.familySide : null
+
   const classes = [
     'person-node',
     `person-node--${emphasis}`,
+    familySide ? `person-node--family-${familySide}` : null,
     inFamilyUnit ? 'person-node--unit' : null,
     selected ? 'person-node--selected' : null,
     comparisonRole ? 'person-node--comparing' : null,

@@ -1,6 +1,7 @@
 import { AppHeader } from '../../components/AppShell'
 import { MenuRow } from '../../components/Detail'
 import { Icon } from '../../components/icons'
+import { ThemeSetting } from './ThemeSetting'
 
 /**
  * More — the third destination.
@@ -53,6 +54,13 @@ export function MenuScreen({
       <AppHeader title="More" subtitle={treeName} />
       <div className="app-page">
         <div className="app-page__inner">
+          {/*
+            Appearance sits above the list rather than inside it: every
+            row below opens a screen, and a row that changes something in
+            place would be a different kind of thing wearing the same
+            clothes.
+          */}
+          <ThemeSetting />
           <div className="menu-list">
             <MenuRow
               icon={Icon.people()}
