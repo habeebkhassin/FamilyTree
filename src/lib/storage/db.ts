@@ -1,5 +1,14 @@
 import Dexie, { type Table } from 'dexie'
-import type { FamilyTree, Person, ParentLink, Union, MediaRecord, FamilyGroup, FamilyGroupMember } from '../../types'
+import type {
+  FamilyTree,
+  Person,
+  ParentLink,
+  Union,
+  MediaRecord,
+  MediaBlob,
+  FamilyGroup,
+  FamilyGroupMember,
+} from '../../types'
 import type { ChangeEvent, OutboxEntry, SyncState } from '../sync/changeTypes'
 import type {
   FamilyTreeMember,
@@ -7,6 +16,7 @@ import type {
   Invitation,
   PersonClaim,
 } from '../policy/membershipTypes'
+import type { MediaUpload } from '../media/mediaTypes'
 
 /**
  * Exported (rather than kept module-private) only so tests can open a
@@ -21,6 +31,10 @@ export class FamilyTreeDatabase extends Dexie {
   parentLinks!: Table<ParentLink, string>
   unions!: Table<Union, string>
   media!: Table<MediaRecord, string>
+  /** Local-only bytes. Never synced, never backed up. See MediaBlob. */
+  mediaBlobs!: Table<MediaBlob, string>
+  /** Photos waiting to reach object storage. See lib/media. */
+  mediaUploads!: Table<MediaUpload, string>
   familyGroups!: Table<FamilyGroup, string>
   familyGroupMembers!: Table<FamilyGroupMember, string>
   /**
@@ -141,6 +155,56 @@ export class FamilyTreeDatabase extends Dexie {
         '++clientSeq, &id, changeSetId, familyTreeId, entity, entityId, [entity+entityId], createdAt, serverSeq',
       outbox: 'eventId, familyTreeId, createdAt, rejectedAt',
     })
+
+    /*
+      Milestone 5: photographs.
+
+      The one migration in this project that MOVES data rather than only
+      adding to the schema, and it is worth saying why.
+
+      A MediaRecord used to carry its Blob inline, which is exactly why
+      media was excluded from the change log — a complete before/after
+      snapshot containing binary would have gone into every event and
+      every sync payload. Rather than bend that rule, the bytes move: the
+      record keeps the description and gains a path, and the bytes go to
+      `mediaBlobs`, which is local-only and never synced or backed up.
+
+      The upgrade below carries every existing blob across, so a photo
+      somebody already has stays exactly where they can see it. Nothing is
+      dropped: a record that had no blob simply has no row on the other
+      side.
+
+      `media` also gains `deletedAt`, because a syncable record tombstones
+      rather than vanishing — that is what lets a deletion reach another
+      device, and what stops a queued upload resurrecting a photo somebody
+      removed.
+    */
+    this.version(6)
+      .stores({
+        media: 'id, familyTreeId, kind, *personIds, deletedAt',
+        mediaBlobs: 'mediaId, familyTreeId',
+        mediaUploads: 'mediaId, familyTreeId, state',
+      })
+      .upgrade(async (transaction) => {
+        const media = transaction.table('media')
+        const blobs = transaction.table('mediaBlobs')
+        const now = new Date().toISOString()
+
+        await media.toCollection().modify((record: MediaRecord & { blob?: Blob }) => {
+          const { blob } = record
+          if (!blob) return
+          // Queued on the same transaction, so the move is atomic with
+          // the field being cleared: there is no state where the bytes
+          // are in neither place.
+          void blobs.put({
+            mediaId: record.id,
+            familyTreeId: record.familyTreeId,
+            blob,
+            updatedAt: now,
+          })
+          delete record.blob
+        })
+      })
   }
 }
 

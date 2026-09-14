@@ -127,15 +127,32 @@ returns jsonb
 language sql
 immutable
 as $$
+  with sides as (
+    /*
+      A CREATE carries `before: null`, and in jsonb that is the JSON null
+      VALUE, not SQL NULL — so `coalesce` does not replace it and
+      `jsonb_object_keys` is handed a scalar and raises.
+
+      That is not hypothetical: it rejected every create event pushed from
+      a real client, and went unnoticed because the tests written with
+      this function only ever pushed updates. Anything that is not a JSON
+      object is now treated as "no fields", which is what both SQL null
+      and JSON null actually mean here.
+    */
+    select
+      case when jsonb_typeof(p_before) = 'object' then p_before else '{}'::jsonb end as before,
+      case when jsonb_typeof(p_after) = 'object' then p_after else '{}'::jsonb end as after
+  )
   select coalesce(
     (
-      select jsonb_object_agg(k, coalesce(p_after -> k, 'null'::jsonb))
-      from (
-        select jsonb_object_keys(coalesce(p_after, '{}'::jsonb)) as k
+      select jsonb_object_agg(k, coalesce(sides.after -> k, 'null'::jsonb))
+      from sides,
+      lateral (
+        select jsonb_object_keys(sides.after) as k
         union
-        select jsonb_object_keys(coalesce(p_before, '{}'::jsonb)) as k
+        select jsonb_object_keys(sides.before) as k
       ) keys
-      where (p_before -> k) is distinct from (p_after -> k)
+      where (sides.before -> k) is distinct from (sides.after -> k)
     ),
     '{}'::jsonb
   );

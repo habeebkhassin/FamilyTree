@@ -1,0 +1,70 @@
+.photo-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The real control is the portrait and the words under it; the file
+   input itself is never something anybody should see. */
+.photo-picker__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.photo-picker__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.photo-picker__action {
+  /* 44px, like every other touch target here — the redesign settled
+     this and a photo button is not the place to make an exception. */
+  min-height: 44px;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.photo-picker__action:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+.photo-picker__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.photo-picker__action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.photo-picker__action--remove {
+  color: var(--text-secondary);
+}
+
+.photo-picker__action--remove:hover:not(:disabled) {
+  background: var(--row-band);
+  color: var(--danger);
+}
+
+.photo-picker__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+}

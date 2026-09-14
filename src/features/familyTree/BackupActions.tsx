@@ -56,7 +56,9 @@ export function BackupActions({
         text:
           `Saved ${people} ${people === 1 ? 'person' : 'people'} and ${backup.counts.changeEvents} recorded changes.` +
           (backup.mediaBlobsExcluded > 0
-            ? ` ${backup.mediaBlobsExcluded} photo files were not included.`
+            ? ` ${backup.mediaBlobsExcluded} photo ${
+                backup.mediaBlobsExcluded === 1 ? 'file was' : 'files were'
+              } not included.`
             : ''),
       })
     } catch (error) {

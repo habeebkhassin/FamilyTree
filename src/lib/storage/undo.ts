@@ -31,6 +31,9 @@ const TABLE_BY_ENTITY: Record<SyncEntity, Table<never, string>> = {
   union: db.unions as unknown as Table<never, string>,
   familyGroup: db.familyGroups as unknown as Table<never, string>,
   familyGroupMember: db.familyGroupMembers as unknown as Table<never, string>,
+  // Metadata only. Undoing a media change puts the description back;
+  // the bytes were never in the event and are not touched.
+  media: db.media as unknown as Table<never, string>,
 }
 
 const ALL_ENTITY_TABLES = [

@@ -1,33 +1,34 @@
 import { useEffect, useState } from 'react'
 import type { Person } from '../types'
-import { getMediaRecord } from '../lib/storage/media'
+import { getLocalMedia } from '../lib/media/mediaStore'
+import { mediaCacheGeneration, onMediaCacheChanged } from './mediaCache'
 import { Avatar } from './Avatar'
 import './PersonPhoto.css'
 
 /**
  * A person's portrait, or their initials.
  *
- * The photo is real: a Person carries `profilePhotoId`, which points at a
- * MediaRecord holding the bytes, and this resolves that pointer through
- * the existing storage API. Nothing is invented — a person with no photo
- * gets the Avatar that has always stood in for one, and a pointer that no
- * longer resolves falls back to exactly the same thing rather than
- * showing a broken frame.
+ * The photo is real: a Person carries `profilePhotoId`, which names a
+ * MediaRecord, whose bytes are in this device's media cache. A person
+ * with no photo gets the Avatar that has always stood in for one, and a
+ * pointer whose bytes are not here yet gets the same thing rather than a
+ * broken frame — so a card is never empty while a download is in flight.
  *
- * There is no way to ADD a photo in the application yet, so in practice
- * most families will see initials everywhere. That is the honest state of
- * it: this is the read path, built so that the day photos can be added
- * they appear here without anything else changing.
+ * DELIBERATELY DOES NOT FETCH. A component that downloaded on mount would
+ * make drawing a fifty-person tree fifty requests, and would do it again
+ * on every pan. Fetching is the sync cycle's job, which asks for the
+ * portraits the visible tree actually needs and caches them here; this
+ * reads what is already local and re-reads when that changes.
  */
 
 /**
- * Object URLs live as long as the document unless revoked, and a fifty
- * person tree would otherwise mint fifty of them on every re-render. One
- * URL per media record, shared by every card showing it.
+ * Object URLs live as long as the document unless revoked, and a
+ * fifty-person tree would otherwise mint fifty on every re-render. One
+ * per media record, shared by every card showing it.
  */
 const urlByMediaId = new Map<string, string>()
 
-/** Ids that resolved to no record, or to a record with no bytes. */
+/** Ids with no bytes on this device. Re-checked when the cache changes. */
 const missingMediaIds = new Set<string>()
 
 async function loadPhotoUrl(mediaId: string): Promise<string | null> {
@@ -35,8 +36,11 @@ async function loadPhotoUrl(mediaId: string): Promise<string | null> {
   if (cached) return cached
   if (missingMediaIds.has(mediaId)) return null
 
-  const record = await getMediaRecord(mediaId)
-  if (!record?.blob) {
+  const stored = await getLocalMedia(mediaId)
+  // The small copy is what a card wants; the original is only worth
+  // decoding when somebody is actually looking at the photograph.
+  const bytes = stored?.thumbnail ?? stored?.blob
+  if (!bytes) {
     missingMediaIds.add(mediaId)
     return null
   }
@@ -45,7 +49,7 @@ async function loadPhotoUrl(mediaId: string): Promise<string | null> {
   const raced = urlByMediaId.get(mediaId)
   if (raced) return raced
 
-  const url = URL.createObjectURL(record.blob)
+  const url = URL.createObjectURL(bytes)
   urlByMediaId.set(mediaId, url)
   return url
 }
@@ -61,7 +65,21 @@ export function PersonPhoto({
 }) {
   const fullName = [person.firstName, person.lastName].filter(Boolean).join(' ')
   const mediaId = person.profilePhotoId
-  const [url, setUrl] = useState<string | null>(() => (mediaId ? (urlByMediaId.get(mediaId) ?? null) : null))
+  const [url, setUrl] = useState<string | null>(() =>
+    mediaId ? (urlByMediaId.get(mediaId) ?? null) : null,
+  )
+  const [generation, setGeneration] = useState(mediaCacheGeneration)
+
+  useEffect(
+    () =>
+      onMediaCacheChanged(() => {
+        // Something arrived, so a portrait that had nothing to show may
+        // now have something.
+        missingMediaIds.clear()
+        setGeneration(mediaCacheGeneration())
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!mediaId) {
@@ -75,7 +93,7 @@ export function PersonPhoto({
     return () => {
       cancelled = true
     }
-  }, [mediaId])
+  }, [mediaId, generation])
 
   if (!url) return <Avatar name={fullName} size={size} />
 
@@ -87,9 +105,10 @@ export function PersonPhoto({
       width={size}
       height={size}
       style={{ width: size, height: size }}
-      /* A file that decodes to nothing should look like no photo, not
-         like a failure. */
+      // A file that decodes to nothing should look like no photo, not
+      // like a failure.
       onError={() => setUrl(null)}
+      loading="lazy"
     />
   )
 }

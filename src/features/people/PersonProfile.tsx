@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Avatar } from '../../components/Avatar'
+import { PersonPhoto } from '../../components/PersonPhoto'
+import { PersonPhotoPicker } from './PersonPhotoPicker'
 import { Button } from '../../components/Button'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { AppHeader, IconButton } from '../../components/AppShell'
@@ -46,6 +47,8 @@ interface PersonProfileProps {
   availableFamilyGroups: FamilyGroup[]
   onBack: () => void
   onEdit: () => void
+  /** Reload the person after their photo changed. */
+  onPhotoChanged?: () => void
   onDelete: () => void
   onAddRelative: (kind: RelationshipKind) => void
   onOpenPerson: (personId: string) => void
@@ -80,6 +83,7 @@ export function PersonProfile({
   availableFamilyGroups,
   onBack,
   onEdit,
+  onPhotoChanged,
   onDelete,
   onAddRelative,
   onOpenPerson,
@@ -108,7 +112,17 @@ export function PersonProfile({
 
       <div className="person-profile__body">
         <header className="person-profile__hero">
-          <Avatar name={fullName} size={104} />
+          {/*
+            The real portrait, not just initials — this screen is where
+            somebody looks at a relative, so it is where their photograph
+            belongs. PersonPhoto falls back to the initials avatar when
+            there is no photo or its bytes have not arrived yet.
+          */}
+          <PersonPhoto person={person} size={104} />
+          {/* Changing it is offered only to somebody who may edit. The
+              server decides too; this is what stops a viewer being shown
+              a control that would be refused. */}
+          {policy.canEdit.allowed && <PersonPhotoPicker person={person} onChanged={onPhotoChanged} />}
           <h1 className="person-profile__name">{fullName}</h1>
           {relationshipLabel && <p className="person-profile__relation">{relationshipLabel}</p>}
           {person.isPlaceholder && <span className="person-profile__badge">Placeholder</span>}

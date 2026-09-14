@@ -40,16 +40,19 @@ export const BACKUP_FORMAT = 'familytree.backup' as const
 export const BACKUP_VERSION = 1 as const
 
 /**
- * A media record as it travels in a backup: everything except the bytes.
+ * A media record as it travels in a backup.
  *
- * `MediaRecord.blob` is a Blob, which JSON cannot carry and which would
- * turn a small family's backup into hundreds of megabytes of base64. Media
- * belongs in object storage with the record holding a reference — that is
- * a later phase, and the change log already excludes media for the same
- * reason. Until then a backup carries the metadata and says plainly, in
- * `mediaBlobsExcluded`, how many blobs it left behind.
+ * Since Milestone 5 a MediaRecord IS metadata — the bytes live in a
+ * local-only table and in object storage — so there is nothing left to
+ * strip and this is the record itself. The backup contract is unchanged:
+ * descriptions travel, bytes do not, and `mediaBlobsExcluded` still says
+ * plainly how many were left behind.
+ *
+ * The alias is kept rather than replaced by MediaRecord everywhere,
+ * because a file written under the old shape must still read, and this is
+ * where a future difference between the two would be expressed.
  */
-export type BackupMediaRecord = Omit<MediaRecord, 'blob'>
+export type BackupMediaRecord = MediaRecord
 
 /**
  * Every store row that belongs to one tree.

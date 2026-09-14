@@ -438,7 +438,7 @@ test('21. a real v1 database upgrades through every later version with each reco
   // upgrade in turn.
   const upgraded = new FamilyTreeDatabase(dbName)
   await upgraded.open()
-  assert.equal(upgraded.verno, 5, 'the database is now at version 5')
+  assert.equal(upgraded.verno, 6, 'the database is now at version 6')
 
   const tree = await upgraded.familyTrees.get(treeId)
   assert.equal(tree?.name, 'Legacy', 'the pre-existing tree survived untouched')
@@ -467,6 +467,12 @@ test('21. a real v1 database upgrades through every later version with each reco
     undefined,
     'and no sync position was invented for a tree that has never synced',
   )
+
+  // Version 6 moved photo bytes out of the record. A legacy database
+  // with no media has nothing to move, and ends up with empty tables
+  // rather than missing ones.
+  assert.equal(await upgraded.mediaBlobs.count(), 0)
+  assert.equal(await upgraded.mediaUploads.count(), 0)
   assert.equal(await upgraded.invitations.count(), 0)
   assert.equal(await upgraded.governance.count(), 0)
 
@@ -505,4 +511,66 @@ test('22. governance rows survive alongside genealogy in the live database', asy
   const governance = await getGovernance(tree.id)
   assert.equal(governance.members.length, 1)
   assert.equal(governance.claims.length, 1)
+})
+
+test('23. the version 6 upgrade carries existing photo bytes across', async () => {
+  const dbName = `FamilyTreeDatabase-m5-migration-${crypto.randomUUID()}`
+  const treeId = crypto.randomUUID()
+  const withPhoto = crypto.randomUUID()
+  const withoutPhoto = crypto.randomUUID()
+  const now = '2026-01-01T00:00:00.000Z'
+  const bytes = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' })
+
+  /*
+    A version(5) database, holding media the old way: the Blob inline on
+    the record, which is exactly what this upgrade exists to move.
+  */
+  const legacy = new Dexie(dbName)
+  legacy.version(5).stores({
+    familyTrees: 'id, updatedAt, deletedAt',
+    people: 'id, familyTreeId, deletedAt',
+    parentLinks: 'id, familyTreeId, parentId, childId, deletedAt',
+    unions: 'id, familyTreeId, partnerAId, partnerBId, deletedAt',
+    media: 'id, familyTreeId, kind, *personIds',
+    familyGroups: 'id, familyTreeId, originPersonId, deletedAt',
+    familyGroupMembers: 'id, familyTreeId, familyGroupId, personId, &[familyGroupId+personId], deletedAt',
+    changeEvents:
+      '++clientSeq, &id, changeSetId, familyTreeId, entity, entityId, [entity+entityId], createdAt, serverSeq',
+    outbox: 'eventId, familyTreeId, createdAt, rejectedAt',
+    syncState: 'familyTreeId',
+    familyTreeMembers: 'id, familyTreeId, actorId, [familyTreeId+actorId], status',
+    personClaims: 'id, familyTreeId, personId, actorId, [familyTreeId+actorId], [familyTreeId+personId]',
+    invitations: 'id, familyTreeId, status, expiresAt',
+    governance: 'familyTreeId',
+  })
+  await legacy.open()
+  await legacy.table('familyTrees').add({ id: treeId, name: 'With Photos', createdAt: now, updatedAt: now })
+  await legacy.table('media').bulkAdd([
+    { id: withPhoto, familyTreeId: treeId, kind: 'photo', blob: bytes, personIds: [], createdAt: now, updatedAt: now },
+    { id: withoutPhoto, familyTreeId: treeId, kind: 'story', body: 'A story, no bytes', personIds: [], createdAt: now, updatedAt: now },
+  ])
+  legacy.close()
+
+  const upgraded = new FamilyTreeDatabase(dbName)
+  await upgraded.open()
+  assert.equal(upgraded.verno, 6)
+
+  const moved = await upgraded.mediaBlobs.get(withPhoto)
+  assert.ok(moved, 'the bytes came across')
+  assert.equal(moved?.blob.size, 4, 'all of them')
+  assert.equal(moved?.familyTreeId, treeId)
+
+  const record = (await upgraded.media.get(withPhoto)) as { blob?: Blob; kind: string } | undefined
+  assert.equal(record?.blob, undefined, 'and are no longer on the record')
+  assert.equal(record?.kind, 'photo', 'which is otherwise untouched')
+
+  assert.equal(
+    await upgraded.mediaBlobs.get(withoutPhoto),
+    undefined,
+    'a record that never had bytes gets no row, rather than an empty one',
+  )
+  assert.ok(await upgraded.media.get(withoutPhoto), 'and survives the upgrade itself')
+
+  upgraded.close()
+  await Dexie.delete(dbName)
 })

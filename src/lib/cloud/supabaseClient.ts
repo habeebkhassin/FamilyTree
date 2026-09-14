@@ -30,6 +30,20 @@ export interface SupabaseLike {
   }
   from(table: string): SupabaseQueryLike
   rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string } | null }>
+  storage: {
+    from(bucket: string): SupabaseBucketLike
+  }
+}
+
+/** Only the three operations the media transport uses. */
+export interface SupabaseBucketLike {
+  upload(
+    path: string,
+    body: Blob,
+    options?: { contentType?: string; upsert?: boolean },
+  ): Promise<{ error: { message: string } | null }>
+  download(path: string): Promise<{ data: Blob | null; error: { message: string } | null }>
+  remove(paths: string[]): Promise<{ error: { message: string } | null }>
 }
 
 export interface SupabaseQueryLike {

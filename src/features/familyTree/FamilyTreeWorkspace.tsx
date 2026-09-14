@@ -687,6 +687,7 @@ export function FamilyTreeWorkspace({
                 availableFamilyGroups={availableFamilyGroups}
                 onBack={goHome}
                 onEdit={() => openEditPerson(person.id)}
+                onPhotoChanged={() => void reload()}
                 onDelete={() => handleDelete(person.id)}
                 onAddRelative={(kind) =>
                   openCreatePerson({ kind, anchorPersonId: person.id, anchorName: formatName(person) })

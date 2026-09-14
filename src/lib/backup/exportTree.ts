@@ -65,13 +65,20 @@ export async function exportFamilyTree(familyTreeId: string): Promise<TreeBackup
   const syncState = (await db.syncState.get(familyTreeId)) ?? null
   const governance = (await db.governance.get(familyTreeId)) ?? null
 
-  // The bytes are dropped, deliberately, and counted so the file says so.
-  let mediaBlobsExcluded = 0
-  const media: BackupMediaRecord[] = mediaRecords.map((record) => {
-    const { blob, ...rest } = record
-    if (blob) mediaBlobsExcluded += 1
-    return rest
-  })
+  /*
+    The contract is unchanged: metadata travels, bytes do not, and the
+    file says how many it left behind.
+
+    What changed underneath is where the bytes were. They used to be a
+    field on the record and are now rows in `mediaBlobs`, so the count is
+    taken from there — the number is the same number it always meant, and
+    a file written before this still reads correctly.
+  */
+  const mediaBlobsExcluded = await db.mediaBlobs
+    .where('familyTreeId')
+    .equals(familyTreeId)
+    .count()
+  const media: BackupMediaRecord[] = mediaRecords
 
   const data = {
     familyTree,

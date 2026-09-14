@@ -6,6 +6,12 @@ import { NullRemoteAdapter } from '../../lib/sync/remoteAdapter'
 import type { RemoteAdapter } from '../../lib/sync/remoteAdapter'
 import { getPendingEvents, getRejectedEntries, syncTree } from '../../lib/sync/syncEngine'
 import type { SyncOutcome } from '../../lib/sync/syncEngine'
+import { SupabaseMediaTransport } from '../../lib/cloud/supabaseMedia'
+import { NoMediaTransport } from '../../lib/media/mediaTransport'
+import type { MediaTransport } from '../../lib/media/mediaTransport'
+import { syncMedia } from '../../lib/media/mediaSync'
+import { portraitMediaIds } from '../../lib/media/mediaStore'
+import { notifyMediaCacheChanged } from '../../components/mediaCache'
 
 /**
  * Keeping one tree in step — Milestone 3.
@@ -62,18 +68,27 @@ function defaultAdapter(): RemoteAdapter {
   return new CloudRemoteAdapter(new SupabaseCloudTreeStore())
 }
 
+function defaultMediaTransport(): MediaTransport {
+  if (!isCloudConfigured()) return new NoMediaTransport()
+  return new SupabaseMediaTransport()
+}
+
 export function useSync({
   familyTreeId,
   /** True only when signed in AND this tree is saved to the account. */
   isCloudTree,
   adapter,
+  mediaTransport,
 }: {
   familyTreeId: string
   isCloudTree: boolean
   /** Injected by tests. */
   adapter?: RemoteAdapter
+  /** Injected by tests. */
+  mediaTransport?: MediaTransport
 }): SyncValue {
   const remote = useMemo(() => adapter ?? defaultAdapter(), [adapter])
+  const media = useMemo(() => mediaTransport ?? defaultMediaTransport(), [mediaTransport])
 
   const [status, setStatus] = useState<SyncStatus>('local')
   const [pending, setPending] = useState(0)
@@ -97,6 +112,28 @@ export function useSync({
     try {
       const result = await syncTree(familyTreeId, remote)
       setOutcome(result)
+
+      /*
+        Photographs move after the records that describe them, in the same
+        cycle rather than one of their own. The order matters: the pull
+        above is what tells this device that a photo exists at all, and
+        asking for bytes before knowing that would be asking for nothing.
+
+        A photograph that will not upload must never look like a change
+        that was refused — the family's edits are what the status line is
+        about, and the picture is safe on this device either way. So this
+        does not touch `outcome`, and a failure here leaves the counts
+        below to speak for themselves.
+      */
+      try {
+        const moved = await syncMedia(familyTreeId, media, {
+          downloadFor: await portraitMediaIds(familyTreeId),
+        })
+        if (moved.downloaded > 0) notifyMediaCacheChanged()
+      } catch {
+        // Tried again next cycle. Nothing was lost.
+      }
+
       const stillPending = (await getPendingEvents(familyTreeId)).length
       const refused = (await getRejectedEntries(familyTreeId)).length
       setPending(stillPending)
@@ -110,7 +147,7 @@ export function useSync({
     } finally {
       running.current = false
     }
-  }, [familyTreeId, isCloudTree, remote])
+  }, [familyTreeId, isCloudTree, remote, media])
 
   useEffect(() => {
     if (!isCloudTree) {

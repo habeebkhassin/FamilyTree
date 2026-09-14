@@ -175,6 +175,37 @@ test('a client cannot manufacture a sequence, a time, or another account', async
   assert.equal(stored[0]?.account_id, A, 'the pusher is taken from the token, not the payload')
 })
 
+test('a create event is accepted and materialises the record', async () => {
+  /*
+    Every test here once pushed updates, and that gap hid a real fault: a
+    create carries `before: null`, which in jsonb is the JSON null value
+    rather than SQL NULL, and the delta function raised on it. Creates are
+    the first thing any real client sends.
+  */
+  const NEW_PERSON = 'bbbbbbbb-0000-0000-0000-00000000000a'
+  const created = {
+    id: NEW_PERSON,
+    familyTreeId: TREE,
+    firstName: 'Ada',
+    lastName: 'Okafor',
+    gender: 'female',
+    createdAt: AT,
+    updatedAt: AT,
+  }
+
+  const result = await push(A, [
+    event('e0000000-0000-0000-0000-0000000000c1', 'person', NEW_PERSON, 'create', null, created),
+  ])
+  assert.equal(result[0]?.status, 'accepted', result[0]?.reason ?? '')
+
+  const row = await asUser<{ first_name: string }>(
+    A,
+    `select first_name from public.people where id = $1`,
+    [NEW_PERSON],
+  )
+  assert.equal(row[0]?.first_name, 'Ada', 'the whole record arrived, not an empty one')
+})
+
 // ── idempotency ─────────────────────────────────────────────────────
 
 test('re-pushing an event returns the original result and changes nothing', async () => {

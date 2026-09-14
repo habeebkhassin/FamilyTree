@@ -2,6 +2,7 @@ import type {
   FamilyGroup,
   FamilyGroupMember,
   FamilyTree,
+  MediaRecord,
   ParentLink,
   Person,
   Union,
@@ -10,12 +11,15 @@ import type {
 /**
  * The entities whose mutations are recorded in the change log.
  *
- * MediaRecord is deliberately absent. Events carry COMPLETE before/after
- * snapshots (see ChangeEvent), and a MediaRecord embeds a Blob — logging
- * one would copy binary data into every event and, later, into every sync
- * payload. Media needs object storage and a reference, which is a Phase 5
- * question of its own; until then media mutations stay unlogged and media
- * records are excluded from tombstoning.
+ * MediaRecord was absent for a good reason: events carry COMPLETE
+ * before/after snapshots, and the record used to embed a Blob, so logging
+ * one would have copied binary into every event and every sync payload.
+ *
+ * Milestone 5 moved the bytes out rather than bending that rule. A
+ * MediaRecord is now plain JSON describing a photograph and naming where
+ * its bytes live; the bytes themselves are in a local-only table and in
+ * object storage. So it logs, tombstones and syncs exactly like a Person,
+ * and media metadata needs no machinery of its own.
  */
 export type SyncEntity =
   | 'familyTree'
@@ -24,9 +28,17 @@ export type SyncEntity =
   | 'union'
   | 'familyGroup'
   | 'familyGroupMember'
+  | 'media'
 
 /** The record shapes the log can carry, matching SyncEntity one-for-one. */
-export type SyncRecord = FamilyTree | Person | ParentLink | Union | FamilyGroup | FamilyGroupMember
+export type SyncRecord =
+  | FamilyTree
+  | Person
+  | ParentLink
+  | Union
+  | FamilyGroup
+  | FamilyGroupMember
+  | MediaRecord
 
 /**
  * Deliberately small.
