@@ -143,10 +143,16 @@ const EDGE_TYPES = {
   familyBranch: FamilyBranchEdge,
 }
 
-/** The folded-branch card, and how far it sits below its person. */
-const FAMILY_CARD_WIDTH = 168
-const FAMILY_CARD_HEIGHT = 112
-const FAMILY_CARD_GAP = 28
+/**
+ * The folded-branch card.
+ *
+ * Narrower than a generation row is wide, so it can be nudged sideways
+ * within its row without immediately colliding with a neighbour, and
+ * shorter than a person card so it reads as a marker rather than a
+ * record.
+ */
+const FAMILY_CARD_WIDTH = 132
+const FAMILY_CARD_HEIGHT = 64
 
 const NODE_TYPES = {
   person: PersonNode,
@@ -193,13 +199,17 @@ const OVERVIEW_MIN_CARD_PX = 112
  * The floor for the opening frame, which is a different question.
  *
  * The overview above is read — you are looking for a name in it. The
- * opening frame is looked AT: the question is "what is here", and a
- * portrait with a name under it still answers that at a size too small to
- * scan comfortably. So it may go considerably smaller before it stops
- * being a family tree, and going smaller is what lets somebody see the
- * shape of their family rather than one corner of it.
+ * opening frame is looked AT: the question is "what is here", so it may
+ * go somewhat smaller before it stops being a family tree.
+ *
+ * Only somewhat. Pushed too far the other way a fifty-person family
+ * becomes a satellite photograph of itself: technically all there, and
+ * useless, because a card is no longer recognisable as a person. A large
+ * family is allowed to extend past the edge of the phone — that is what
+ * panning is for — and the opening frame's job is to be a useful
+ * overview of it rather than a complete one.
  */
-const OPENING_MIN_CARD_PX = 64
+const OPENING_MIN_CARD_PX = 100
 
 /**
  * Breathing room around the overview frame, as fitView understands it.
@@ -1045,41 +1055,35 @@ export function FamilyTreeCanvas({
     const byId = new Map(layoutedNodes.map((node) => [node.id, node]))
 
     /*
-      The row a folded family used to occupy is not necessarily empty —
-      other people can already stand there, and a card dropped on top of
-      somebody is worse than no card. So each one starts directly beneath
-      its person and steps down until it is clear of everything already
-      laid out, including the cards placed before it.
-    */
-    const taken = layoutedNodes.map((node) => ({
-      left: node.position.x,
-      right: node.position.x + nodeWidth(node),
-      top: node.position.y,
-      bottom: node.position.y + PERSON_NODE_SIZE.height,
-    }))
+      A card hangs in the gap directly beneath its person.
 
-    const clearY = (left: number, startY: number): number => {
-      const right = left + FAMILY_CARD_WIDTH
-      let top = startY
-      for (let attempt = 0; attempt < 24; attempt += 1) {
-        const bottom = top + FAMILY_CARD_HEIGHT
-        const hits = taken.some(
-          (box) => box.left < right && box.right > left && box.top < bottom && box.bottom > top,
-        )
-        if (!hits) break
-        top += FAMILY_CARD_HEIGHT + FAMILY_CARD_GAP
-      }
-      return top
-    }
+      Two earlier attempts put it in the row below instead, and both failed
+      the same way. The row below is where the folded children USED to be —
+      and the moment they go, the layout closes the gap and packs the
+      remaining people in. There is then no free slot anywhere near the
+      right parent, so the search for one wandered: first downwards, until
+      every card ended up in a detached row along the bottom of the tree,
+      and then sideways, up to nine hundred pixels from the family it
+      belonged to. Either way nobody could tell which branch a card was
+      for, which is the whole job of the card.
+
+      The gap between two generation rows cannot have that problem, because
+      no person is ever in it: every node is placed at
+      `rank * GENERATION_ROW_HEIGHT` and is PERSON_NODE_SIZE.height tall,
+      so what is left over is empty by construction. A card that lives
+      there is always exactly under its own person, needs no search, and
+      cannot collide with anybody — and because it is no wider than a
+      person, two cards can only overlap if their two people do.
+
+      Still nothing in the layout: this reads coordinates ELK produced and
+      adds a node it never saw.
+    */
+    const layerGap = GENERATION_ROW_HEIGHT - PERSON_NODE_SIZE.height
 
     return familyBranches.flatMap((branch) => {
       const root = byId.get(branch.rootPersonId)
       if (!root) return []
       const described = describeFamilyBranch(branch.rootPersonId)
-      const left = root.position.x + (nodeWidth(root) - FAMILY_CARD_WIDTH) / 2
-      const top = clearY(left, root.position.y + PERSON_NODE_SIZE.height + FAMILY_CARD_GAP)
-      // Reserved, so the next card does not land on this one.
-      taken.push({ left, right: left + FAMILY_CARD_WIDTH, top, bottom: top + FAMILY_CARD_HEIGHT })
 
       return [
         {
@@ -1087,9 +1091,10 @@ export function FamilyTreeCanvas({
           type: 'familyCard',
           draggable: false,
           selectable: false,
-          // Directly beneath the person whose family it is, in the row
-          // their children would have occupied.
-          position: { x: left, y: top },
+          position: {
+            x: root.position.x + (nodeWidth(root) - FAMILY_CARD_WIDTH) / 2,
+            y: root.position.y + PERSON_NODE_SIZE.height + (layerGap - FAMILY_CARD_HEIGHT) / 2,
+          },
           data: {
             rootPersonId: branch.rootPersonId,
             familyName: described.familyName,

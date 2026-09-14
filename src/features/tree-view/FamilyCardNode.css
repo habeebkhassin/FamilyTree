@@ -1,23 +1,26 @@
-/* A folded family branch.
-   Deliberately unlike a person card: wider than tall, a house rather than
-   a portrait, and a tap target rather than a record. Nobody should mistake
-   it for somebody. */
+/*
+  A folded family branch, hanging in the gap beneath its person.
+
+  Sized to the gap between two generation rows and no wider than a person
+  card, which is what lets it sit directly under its own family without
+  ever touching anybody: people occupy rows, this occupies what is between
+  them. Horizontal rather than portrait-shaped, and marked with a house
+  rather than a face, so nobody mistakes it for a person.
+*/
 .family-card {
   display: flex;
-  width: 168px;
-  min-height: 112px;
-  flex-direction: column;
+  width: 132px;
+  height: 64px;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 14px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--text);
   font-family: inherit;
-  text-align: center;
+  text-align: left;
   cursor: pointer;
 }
 
@@ -30,25 +33,39 @@
   outline-offset: 2px;
 }
 
+.family-card__text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .family-card__mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: 2px;
+  width: 28px;
+  height: 28px;
+  flex: none;
   border-radius: 50%;
 }
 
+/* Two lines rather than an ellipsis: "Harold's fa…" tells nobody whose
+   family it is, which is the one thing the card exists to say. */
 .family-card__name {
-  font-size: 14px;
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11.5px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .family-card__count {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 /* Your own family keeps the accent; another family keeps the violet it

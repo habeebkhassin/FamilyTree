@@ -46,7 +46,7 @@ export function FamilyCardNode({ data }: NodeProps<FamilyCard>) {
       aria-label={`${familyName}, ${memberLabel(memberCount)}. Open this family`}
     >
       <span className="family-card__mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="22" height="22">
+        <svg viewBox="0 0 24 24" width="16" height="16">
           <path
             d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"
             fill="none"
@@ -57,8 +57,10 @@ export function FamilyCardNode({ data }: NodeProps<FamilyCard>) {
           <path d="M10 20v-5h4v5" fill="none" stroke="currentColor" strokeWidth="1.7" />
         </svg>
       </span>
-      <span className="family-card__name">{familyName}</span>
-      <span className="family-card__count">{memberLabel(memberCount)}</span>
+      <span className="family-card__text">
+        <span className="family-card__name">{familyName}</span>
+        <span className="family-card__count">{memberLabel(memberCount)}</span>
+      </span>
     </button>
   )
 }
