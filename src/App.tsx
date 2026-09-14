@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AuthProvider } from './features/auth/AuthProvider'
+import { SignInScreen } from './features/auth/SignInScreen'
+import { startupView } from './features/auth/startupGate'
+import { useAuth } from './features/auth/useAuth'
 import { WelcomeScreen } from './features/familyTree/WelcomeScreen'
 import { FamilyTreeWorkspace } from './features/familyTree/FamilyTreeWorkspace'
 import { LoadingScreen } from './features/familyTree/LoadingScreen'
@@ -25,9 +28,38 @@ type AppStatus = 'loading' | 'welcome' | 'ready'
 function App() {
   return (
     <AuthProvider>
-      <FamilyTreeApp />
+      <StartupGate />
     </AuthProvider>
   )
+}
+
+/**
+ * Nothing of the family is rendered until we know who is asking.
+ *
+ * The gate is a separate component from FamilyTreeApp rather than a
+ * branch inside it, and that is the whole point: an unauthenticated
+ * visitor does not get a hidden workspace, they get no workspace. Because
+ * FamilyTreeApp is never mounted, its startup effect never runs — no tree
+ * is read, no active family is chosen, and the Create Family screen
+ * cannot appear behind a login.
+ *
+ * It also means signing out unmounts the workspace rather than merely
+ * covering it, which is why the screen you return to is genuinely empty
+ * of the previous family.
+ */
+function StartupGate() {
+  const { state } = useAuth()
+
+  switch (startupView(state)) {
+    case 'loading':
+      // The session has not resolved. Showing anything else here is the
+      // flash of the wrong screen this state exists to prevent.
+      return <LoadingScreen />
+    case 'signIn':
+      return <SignInScreen />
+    case 'app':
+      return <FamilyTreeApp />
+  }
 }
 
 function FamilyTreeApp() {

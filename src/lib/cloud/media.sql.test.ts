@@ -33,6 +33,14 @@ const EMAIL: Record<string, string> = {
   [STRANGER]: 'stranger@example.com',
 }
 
+/** Every migration, in the order `supabase db push` applies them. */
+const MIGRATIONS = [
+  '0001_cloud_trees.sql',
+  '0002_change_events.sql',
+  '0003_sharing.sql',
+  '0004_media.sql',
+]
+
 let db: PGlite
 
 /**
@@ -62,6 +70,21 @@ const SUPABASE_SHIM = `
   grant usage on schema storage to authenticated;
   grant select, insert, update, delete on storage.objects to authenticated;
   grant select on storage.buckets to authenticated;
+
+  /*
+    Enabled HERE and not by the migration, because that is where it comes
+    from in reality: Supabase owns storage.objects and turns row-level
+    security on for every project, and a migration that asks for it again
+    is refused outright —
+
+      ERROR: must be owner of table objects (SQLSTATE 42501)
+
+    So the shim plays the platform's part. This line is load-bearing for
+    every refusal below: without it the policies exist but decide nothing,
+    and a stranger would read another family's photographs while the suite
+    reported success.
+  */
+  alter table storage.objects enable row level security;
 `
 
 async function asUser<T>(uid: string | null, sql: string, params: unknown[] = []): Promise<T[]> {
@@ -96,12 +119,7 @@ const path = (tree: string, media: string, which = 'original') =>
 before(async () => {
   db = new PGlite()
   await db.exec(SUPABASE_SHIM)
-  for (const file of [
-    '0001_cloud_trees.sql',
-    '0002_change_events.sql',
-    '0003_sharing.sql',
-    '0004_media.sql',
-  ]) {
+  for (const file of MIGRATIONS) {
     await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   }
 
@@ -135,6 +153,93 @@ after(async () => {
 test('the photo bucket is private', async () => {
   const bucket = await db.query<{ public: boolean }>(`select public from storage.buckets where id = 'family-media'`)
   assert.equal(bucket.rows[0]?.public, false, 'family photographs are not on the open web')
+})
+
+// ── what the platform owns, and what this migration may ask for ─────
+
+test('the migration never tries to alter storage.objects', async () => {
+  /*
+    This is the statement that failed a real deployment:
+
+      ERROR: must be owner of table objects (SQLSTATE 42501)
+
+    storage.objects belongs to supabase_storage_admin, so an ALTER on it
+    is refused and takes the whole migration — policies included — down
+    with it. Creating policies is permitted; altering the table is not.
+
+    Asserted against the shipped file rather than the applied schema
+    because the fault was in the SQL text: a fresh database here happily
+    accepts the ALTER, so only reading what we ship can catch it coming
+    back.
+  */
+  const sql = readFileSync('supabase/migrations/0004_media.sql', 'utf8')
+  const offending = sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .filter((line) => /alter\s+table\s+storage\./i.test(line))
+  assert.deepEqual(offending, [], 'storage tables belong to the platform, not to this migration')
+})
+
+test('row level security is in force on the objects table', async () => {
+  /*
+    Supabase enables this, and the shim does it here in the platform's
+    place. If it were ever missing, every policy below would still be
+    created and none of them would decide anything — so this failing is
+    the difference between a suite that proves refusals and one that only
+    appears to.
+  */
+  const enabled = await db.query<{ relrowsecurity: boolean }>(
+    `select relrowsecurity from pg_class
+      where oid = 'storage.objects'::regclass`,
+  )
+  assert.equal(enabled.rows[0]?.relrowsecurity, true)
+})
+
+test('the four storage policies are created by the migration', async () => {
+  const rows = await db.query<{ policyname: string; cmd: string }>(
+    `select policyname, cmd from pg_policies
+      where schemaname = 'storage' and tablename = 'objects'
+      order by policyname`,
+  )
+  assert.deepEqual(
+    rows.rows.map((row) => row.policyname),
+    ['family_media_delete', 'family_media_insert', 'family_media_read', 'family_media_update'],
+    'removing the ALTER must not have taken the policies with it',
+  )
+})
+
+test('all four migrations apply to a database that has never seen them', async () => {
+  /*
+    The suite's own setup applies them once, but it does so as scaffolding
+    for everything else; a deployment failure is its own thing and
+    deserves its own test. This is the rehearsal: an empty database, the
+    platform's tables, then 0001 to 0004 in order, exactly as `db push`
+    would run them.
+
+    Separate instance rather than the shared one, because "works on a
+    fresh database" is precisely the claim, and a database the other
+    tests have been writing to cannot make it.
+  */
+  const fresh = new PGlite()
+  try {
+    await fresh.exec(SUPABASE_SHIM)
+    for (const file of MIGRATIONS) {
+      await fresh.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
+    }
+
+    const policies = await fresh.query<{ count: string }>(
+      `select count(*)::text as count from pg_policies
+        where schemaname = 'storage' and tablename = 'objects'`,
+    )
+    assert.equal(policies.rows[0]?.count, '4', 'the storage policies came with them')
+
+    const bucket = await fresh.query<{ public: boolean }>(
+      `select public from storage.buckets where id = 'family-media'`,
+    )
+    assert.equal(bucket.rows[0]?.public, false, 'and the bucket is private from the start')
+  } finally {
+    await fresh.close()
+  }
 })
 
 // ── metadata through the ordinary event path ────────────────────────

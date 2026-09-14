@@ -1,0 +1,70 @@
+/* Mirrors WelcomeScreen, on purpose: the sign-in screen is the first
+   screen of this application, not a different product in front of it. */
+.signin {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.signin__card {
+  width: 100%;
+  max-width: 440px;
+  text-align: left;
+}
+
+.signin__eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.signin__title {
+  font-size: 32px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+
+.signin__subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 28px;
+}
+
+.signin__error {
+  margin-bottom: 16px;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.signin__action {
+  display: flex;
+}
+
+/* Full width here and nowhere else: it is the only action on the screen,
+   and on a phone it should sit under the thumb rather than in a corner. */
+.signin__action .button {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+}
+
+.signin__note {
+  margin-top: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .signin__card {
+    padding: 24px;
+  }
+
+  .signin__title {
+    font-size: 26px;
+  }
+}

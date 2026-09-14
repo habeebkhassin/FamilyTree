@@ -306,7 +306,25 @@ exception when others then
 end;
 $$;
 
-alter table storage.objects enable row level security;
+-- Row-level security is NOT enabled here, deliberately.
+--
+-- `storage.objects` belongs to `supabase_storage_admin`, not to the role
+-- migrations run as, and Supabase enables RLS on it for every project
+-- itself. Asking for it again is not a no-op: it is an ALTER on a table
+-- we do not own, and the platform refuses it —
+--
+--   ERROR: must be owner of table objects (SQLSTATE 42501)
+--
+-- — which fails the whole migration and takes the policies below with it.
+--
+-- Creating policies on `storage.objects` IS permitted, and that is all
+-- this migration needs: the protection comes from the four policies, and
+-- the switch they hang off is already on and is Supabase's to hold.
+--
+-- Nothing here is weakened by the removal. If that assumption ever stops
+-- being true the policies would be inert, so the test suite asserts the
+-- enforcement rather than trusting it, against a shim that enables RLS
+-- the way the platform does.
 
 -- Read: any active member of the family the object belongs to. A viewer
 -- included — being able to see the family means being able to see its
