@@ -35,6 +35,7 @@ import {
   pickHomeFamilyGroup,
 } from '../relationships/familyConnections'
 import type { FamilyConnection } from '../relationships/familyConnections'
+import { collapsibleBranches } from '../tree-view/familyBranches'
 import { TreeSearch } from '../tree-view/TreeSearch'
 import { PeopleScreen } from './PeopleScreen'
 import { MenuScreen } from './MenuScreen'
@@ -100,6 +101,13 @@ type View =
   | { screen: 'otherFamily'; connection: FamilyConnection }
   /** Both families at once. A view, never a merge of the records. */
   | { screen: 'mergedFamily'; connection: FamilyConnection }
+  /**
+   * One family's own tree, opened from a folded branch card.
+   *
+   * The same screen the connected-family route uses, reached from inside
+   * the tree instead of across a marriage — one navigation model, not two.
+   */
+  | { screen: 'familyBranch'; familyGroupId: string; personId: string }
 
 /** Nothing collapsed. A module constant so it keeps its identity between renders. */
 const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set<string>()
@@ -211,6 +219,85 @@ export function FamilyTreeWorkspace({
    */
   const [openConnection, setOpenConnection] = useState<FamilyConnection | null>(null)
 
+  /*
+    Family branches the main tree may fold into a card.
+
+    Computed here because this is where the relationship engine and the
+    current viewpoint both live — the canvas is told which subtrees to
+    leave out, and decides nothing about family shape itself.
+
+    Only the ordinary tree. The connected-family and merged screens are
+    already framed around one question each, and folding branches inside
+    them would be answering a second one nobody asked.
+  */
+  const branches = useMemo(
+    () =>
+      status === 'ready'
+        ? collapsibleBranches(
+            people.map((person) => person.id),
+            engine,
+            focal.focalPersonId,
+          )
+        : [],
+    [people, engine, focal.focalPersonId, status],
+  )
+
+  /** What a folded branch's card says, and which family's colour it wears. */
+  const describeBranch = useCallback(
+    (rootPersonId: string) => {
+      const groupId = groupsByPersonId.get(rootPersonId)?.[0]?.group.id
+      const person = people.find((candidate) => candidate.id === rootPersonId)
+
+      /*
+        A card names the BRANCH, not the group it happens to sit in.
+
+        Naming it after the family group looked right until two branches
+        of one family appeared side by side, both captioned "Whitfield
+        Family, 46 members" — two cards claiming to be the same 46 people,
+        neither of which held 46 people. A branch is somebody's family, so
+        it is named after them and counts who it actually stands for,
+        which is also how the reference labels one.
+
+        The exception is a branch belonging to ANOTHER family, where the
+        family's own name is the more useful thing to read — that card is
+        an invitation to cross into a family that has a name.
+      */
+      const branch = branches.find((candidate) => candidate.rootPersonId === rootPersonId)
+      const isOtherFamily = Boolean(homeGroupId && groupId && groupId !== homeGroupId)
+
+      if (isOtherFamily && groupId) {
+        return {
+          familyName: familyGroupName(familyGroups, groupId),
+          memberCount: familyGroupSize(familyGroupMembers, groupId),
+          side: 'connected' as const,
+        }
+      }
+
+      return {
+        familyName: person ? `${person.firstName}'s family` : 'Family',
+        // The people folded away, plus the couple the card stands under.
+        memberCount: (branch?.hiddenPersonIds.size ?? 0) + 1,
+        side: 'home' as const,
+      }
+    },
+    [groupsByPersonId, people, branches, familyGroups, familyGroupMembers, homeGroupId],
+  )
+
+  /** Opening a folded branch is opening that family's tree. */
+  const openBranch = useCallback(
+    (rootPersonId: string) => {
+      const groupId = groupsByPersonId.get(rootPersonId)?.[0]?.group.id
+      if (groupId) {
+        setView({ screen: 'familyBranch', familyGroupId: groupId, personId: rootPersonId })
+        return
+      }
+      // No named family: focusing on them is the honest equivalent —
+      // the tree reopens around the family the card stood for.
+      focal.focusOn(rootPersonId)
+    },
+    [groupsByPersonId, focal],
+  )
+
   /**
    * The merged view's membership, and which side each person is on.
    *
@@ -318,7 +405,7 @@ export function FamilyTreeWorkspace({
    * belong to More for the same reason.
    */
   const destination: Destination =
-    view.screen === 'tree'
+    view.screen === 'tree' || view.screen === 'familyBranch'
       ? 'tree'
       : view.screen === 'menu' ||
           view.screen === 'settings' ||
@@ -537,6 +624,24 @@ export function FamilyTreeWorkspace({
           titleMenuLabel={`${tree.name}. Switch to another family`}
           actions={view.screen === 'tree' ? treeHeaderActions : peopleHeaderActions}
         />
+      ) : view.screen === 'familyBranch' ? (
+        <AppHeader
+          title={familyGroupName(familyGroups, view.familyGroupId)}
+          subtitle={(() => {
+            const count = familyGroupSize(familyGroupMembers, view.familyGroupId)
+            return `${count} ${count === 1 ? 'member' : 'members'}`
+          })()}
+          leading={
+            <IconButton label="Back" onClick={() => setView({ screen: 'tree' })}>
+              {Icon.back({ size: 20 })}
+            </IconButton>
+          }
+          actions={
+            <IconButton label="Search this family" onClick={() => setIsSearching(true)}>
+              {Icon.search({ size: 22 })}
+            </IconButton>
+          }
+        />
       ) : view.screen === 'otherFamily' || view.screen === 'mergedFamily' ? (
         /*
           Each of these screens says plainly which family you are looking
@@ -602,6 +707,7 @@ export function FamilyTreeWorkspace({
         className={
           view.screen === 'tree' ||
           view.screen === 'otherFamily' ||
+          view.screen === 'familyBranch' ||
           view.screen === 'mergedFamily'
             ? 'app-page app-page--flush'
             : 'app-page'
@@ -726,6 +832,9 @@ export function FamilyTreeWorkspace({
             connections={outboundConnections}
             familyNameById={familyNameById}
             onOpenConnection={setOpenConnection}
+            familyBranches={branches}
+            describeFamilyBranch={describeBranch}
+            onOpenFamilyBranch={openBranch}
           />
         )}
 
@@ -791,6 +900,46 @@ export function FamilyTreeWorkspace({
                   />
                 </div>
               </>
+            )
+          })()}
+
+        {/*
+          A folded branch, opened.
+
+          The SAME family-group view the connected-family route uses —
+          one navigation model, reached from two places, rather than a
+          second way of looking at a family.
+        */}
+        {view.screen === 'familyBranch' &&
+          (() => {
+            const memberIds = familyGroupMemberIds(familyGroupMembers, view.familyGroupId)
+            return (
+              <FamilyTreeCanvas
+                people={people}
+                parentLinks={parentLinks}
+                unions={unions}
+                familyGroups={NO_FAMILY_GROUPS}
+                familyGroupMembers={familyGroupMembers}
+                collapsedGroupIds={NO_COLLAPSED_GROUPS}
+                onToggleFamilyGroup={toggleFamilyGroup}
+                onSelectPerson={openProfile}
+                focalPersonId={undefined}
+                highlightPersonId={view.personId}
+                onFocusPerson={focal.focusOn}
+                focusHistory={focal.history}
+                onFocusBack={focal.goBack}
+                claimedPersonId={policy.claimedPersonId}
+                shouldPromptForFocus={false}
+                onDismissFocusPrompt={focal.dismissPrompt}
+                requestedView="family-group"
+                onChangeView={setTreeView}
+                onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
+                showGenerations={showGenerations}
+                showPhotos={showPhotos}
+                isComparing={false}
+                onStopComparing={() => setIsComparing(false)}
+                restrictToFamilyGroup={{ memberIds, connectingPersonId: view.personId }}
+              />
             )
           })()}
 
@@ -890,6 +1039,7 @@ export function FamilyTreeWorkspace({
         */}
         {(view.screen === 'tree' ||
           view.screen === 'otherFamily' ||
+          view.screen === 'familyBranch' ||
           view.screen === 'mergedFamily') &&
           isSearching && (
           <TreeSearch

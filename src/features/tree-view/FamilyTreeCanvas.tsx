@@ -10,6 +10,8 @@ import { styleEdgesForView } from './viewEmphasis'
 import { centreOnHousehold } from './focalCentering'
 import type { ImplementedView } from './viewTypes'
 import type { FamilyConnection } from '../relationships/familyConnections'
+import { FamilyCardNode } from './FamilyCardNode'
+import type { FamilyBranch } from './familyBranches'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
@@ -86,6 +88,21 @@ interface FamilyTreeCanvasProps {
    */
   familySideById?: ReadonlyMap<string, 'home' | 'connected'>
   /**
+   * Branches this view may fold into a Family Card — see familyBranches.ts.
+   *
+   * Worked out by the workspace, which owns the relationship engine and
+   * knows who is focused. The canvas is told which subtrees to leave out
+   * and where to put the card; it decides nothing about family shape.
+   */
+  familyBranches?: readonly FamilyBranch[]
+  /** What a folded branch should say, and what happens when it is tapped. */
+  describeFamilyBranch?: (rootPersonId: string) => {
+    familyName: string
+    memberCount: number
+    side: 'home' | 'connected'
+  }
+  onOpenFamilyBranch?: (rootPersonId: string) => void
+  /**
    * The person the tree is currently being explored from. Centers the
    * viewport on them instead of fitting everything, and gives their card
    * a halo. Purely a viewpoint — it takes no part in building the graph,
@@ -126,8 +143,14 @@ const EDGE_TYPES = {
   familyBranch: FamilyBranchEdge,
 }
 
+/** The folded-branch card, and how far it sits below its person. */
+const FAMILY_CARD_WIDTH = 168
+const FAMILY_CARD_HEIGHT = 112
+const FAMILY_CARD_GAP = 28
+
 const NODE_TYPES = {
   person: PersonNode,
+  familyCard: FamilyCardNode,
   unionJunction: UnionJunctionNode,
   familyGroup: FamilyGroupNode,
   familyGroupHeader: FamilyGroupHeader,
@@ -165,6 +188,18 @@ const VIEW_LABELS: Record<ImplementedView, string> = Object.fromEntries(
  * being an overview of anything and becomes a diagram of boxes.
  */
 const OVERVIEW_MIN_CARD_PX = 112
+
+/**
+ * The floor for the opening frame, which is a different question.
+ *
+ * The overview above is read — you are looking for a name in it. The
+ * opening frame is looked AT: the question is "what is here", and a
+ * portrait with a name under it still answers that at a size too small to
+ * scan comfortably. So it may go considerably smaller before it stops
+ * being a family tree, and going smaller is what lets somebody see the
+ * shape of their family rather than one corner of it.
+ */
+const OPENING_MIN_CARD_PX = 64
 
 /**
  * Breathing room around the overview frame, as fitView understands it.
@@ -441,7 +476,7 @@ function FocalPersonCenterer({
     if (people.length === 0) return null
 
     const cardWidth = nodeWidth(people[0] as FamilyNode)
-    const readableZoom = Math.min(1, OVERVIEW_MIN_CARD_PX / cardWidth)
+    const readableZoom = Math.min(1, OPENING_MIN_CARD_PX / cardWidth)
 
     const lefts = people.map((node) => node.position.x)
     const rights = people.map((node) => node.position.x + nodeWidth(node))
@@ -452,32 +487,24 @@ function FocalPersonCenterer({
 
     const fitsAt = Math.min(paneWidth / graphWidth, paneHeight / graphHeight)
     // Small enough to show whole without shrinking past legibility.
-    if (fitsAt >= readableZoom) return { fit: true as const }
+    if (fitsAt >= readableZoom) return { fit: true as const, minZoom: undefined }
 
-    const topY = Math.min(...tops)
-    const topRow = people.filter((node) => node.position.y === topY)
-    // Centred on the oldest generation rather than on the whole graph: in
-    // a family that widens as it descends the two are far apart, and the
-    // founders are what the opening view is meant to show.
-    //
-    // The MEDIAN of that row, not the midpoint between its extremes. A
-    // top generation whose members sit at opposite ends of a wide family
-    // has nothing but canvas at its midpoint, so the tree opened looking
-    // at the gap between two ancestors with both of them off screen. The
-    // median always lands on somebody.
-    const centres = topRow
-      .map((node) => node.position.x + nodeWidth(node) / 2)
-      .sort((a, b) => a - b)
-    const centreX = centres[Math.floor(centres.length / 2)] ?? 0
+    /*
+      Too big to fit AND stay readable — so fit it anyway, but not past
+      the point where a card stops being a card.
 
-    return {
-      fit: false as const,
-      zoom: readableZoom,
-      x: paneWidth / 2 - centreX * readableZoom,
-      // A little clear of the top edge, so the oldest generation is not
-      // flush against the header.
-      y: 24 - topY * readableZoom,
-    }
+      This used to open at the readable scale anchored on the oldest
+      generation, on the argument that a fitted fifty-person family is a
+      smudge. True, but it answered the wrong question: somebody opening a
+      tree with nobody focused is asking "what is here", and a frame that
+      starts at the top-left corner of a family answers "here is a corner".
+
+      fitView is given the floor as its minZoom, so it shows as much of
+      the family as it can and stops shrinking when a card would stop
+      being legible. The result is the whole tree when that is possible
+      and the best readable view of it when it is not.
+    */
+    return { fit: true as const, minZoom: readableZoom }
   }, [focalPersonId, paneWidth, paneHeight, nodes])
 
   useEffect(() => {
@@ -492,8 +519,14 @@ function FocalPersonCenterer({
 
     if (!focalPersonId) {
       if (!opening) return
-      if (opening.fit) void fitView({ padding: OVERVIEW_PADDING, duration: 0, maxZoom: 1.1 })
-      else setViewport({ x: opening.x, y: opening.y, zoom: opening.zoom })
+      // Always a fit now: the whole family where it fits readably, and
+      // as much of it as legibility allows where it does not.
+      void fitView({
+        padding: OVERVIEW_PADDING,
+        duration: 0,
+        maxZoom: 1.1,
+        ...(opening.minZoom === undefined ? {} : { minZoom: opening.minZoom }),
+      })
       return
     }
 
@@ -526,6 +559,9 @@ export function FamilyTreeCanvas({
   restrictToFamilyGroup,
   highlightPersonId,
   familySideById,
+  familyBranches,
+  describeFamilyBranch,
+  onOpenFamilyBranch,
   focalPersonId,
   onFocusPerson,
   focusHistory,
@@ -604,7 +640,45 @@ export function FamilyTreeCanvas({
   // these three are the same references whoever is focused — depending on
   // them rather than on `viewGraph` keeps a change of viewpoint from
   // re-running the group projection and re-laying out the whole tree.
-  const { nodes: viewNodes, edges: viewEdges, ranks: viewRanks, familyUnits } = viewGraph
+  const {
+    nodes: unfoldedNodes,
+    edges: unfoldedEdges,
+    ranks: viewRanks,
+    familyUnits,
+  } = viewGraph
+
+  /*
+    Folded branches leave the graph BEFORE layout.
+
+    Which is the whole reason the tree gets narrower rather than merely
+    quieter: ELK is handed the genealogy with those subtrees absent, and
+    everything else is laid out as though they were not there. Nothing is
+    invented in their place — the card comes later and the layout never
+    sees it.
+  */
+  const foldedPersonIds = useMemo(() => {
+    const hidden = new Set<string>()
+    for (const branch of familyBranches ?? []) {
+      for (const id of branch.hiddenPersonIds) hidden.add(id)
+    }
+    return hidden
+  }, [familyBranches])
+
+  const viewNodes = useMemo(
+    () =>
+      foldedPersonIds.size === 0
+        ? unfoldedNodes
+        : unfoldedNodes.filter((node) => !foldedPersonIds.has(node.id)),
+    [unfoldedNodes, foldedPersonIds],
+  )
+
+  const viewEdges = useMemo(() => {
+    if (foldedPersonIds.size === 0) return unfoldedEdges
+    const shown = new Set(viewNodes.map((node) => node.id))
+    // A junction whose partners have both gone takes its segments with
+    // it, so no edge is ever left pointing at somebody who is not drawn.
+    return unfoldedEdges.filter((edge) => shown.has(edge.source) && shown.has(edge.target))
+  }, [unfoldedEdges, foldedPersonIds, viewNodes])
 
   // The genealogy graph is built first and never altered; collapsing is a
   // pure projection layered on top of it, so toggling a group can only
@@ -958,14 +1032,85 @@ export function FamilyTreeCanvas({
     so hiding generations changes what is drawn and nothing about where
     anybody stands.
   */
+  /*
+    The Family Cards, placed after everything else has been laid out.
+
+    Positioned from the root person's own laid-out position rather than
+    by ELK, and given no handles, so there is no edge and no layout
+    participation: the genealogy graph is exactly the genealogy, and the
+    card sits in the space the folded family used to occupy.
+  */
+  const familyCards = useMemo<Node[]>(() => {
+    if (!familyBranches || familyBranches.length === 0 || !describeFamilyBranch) return []
+    const byId = new Map(layoutedNodes.map((node) => [node.id, node]))
+
+    /*
+      The row a folded family used to occupy is not necessarily empty —
+      other people can already stand there, and a card dropped on top of
+      somebody is worse than no card. So each one starts directly beneath
+      its person and steps down until it is clear of everything already
+      laid out, including the cards placed before it.
+    */
+    const taken = layoutedNodes.map((node) => ({
+      left: node.position.x,
+      right: node.position.x + nodeWidth(node),
+      top: node.position.y,
+      bottom: node.position.y + PERSON_NODE_SIZE.height,
+    }))
+
+    const clearY = (left: number, startY: number): number => {
+      const right = left + FAMILY_CARD_WIDTH
+      let top = startY
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        const bottom = top + FAMILY_CARD_HEIGHT
+        const hits = taken.some(
+          (box) => box.left < right && box.right > left && box.top < bottom && box.bottom > top,
+        )
+        if (!hits) break
+        top += FAMILY_CARD_HEIGHT + FAMILY_CARD_GAP
+      }
+      return top
+    }
+
+    return familyBranches.flatMap((branch) => {
+      const root = byId.get(branch.rootPersonId)
+      if (!root) return []
+      const described = describeFamilyBranch(branch.rootPersonId)
+      const left = root.position.x + (nodeWidth(root) - FAMILY_CARD_WIDTH) / 2
+      const top = clearY(left, root.position.y + PERSON_NODE_SIZE.height + FAMILY_CARD_GAP)
+      // Reserved, so the next card does not land on this one.
+      taken.push({ left, right: left + FAMILY_CARD_WIDTH, top, bottom: top + FAMILY_CARD_HEIGHT })
+
+      return [
+        {
+          id: `familyCard:${branch.rootPersonId}`,
+          type: 'familyCard',
+          draggable: false,
+          selectable: false,
+          // Directly beneath the person whose family it is, in the row
+          // their children would have occupied.
+          position: { x: left, y: top },
+          data: {
+            rootPersonId: branch.rootPersonId,
+            familyName: described.familyName,
+            memberCount: described.memberCount,
+            side: described.side,
+            onOpen: () => onOpenFamilyBranch?.(branch.rootPersonId),
+          },
+        },
+      ]
+    })
+  }, [familyBranches, describeFamilyBranch, onOpenFamilyBranch, layoutedNodes])
+
   const displayNodes = useMemo<Node[]>(
     () => [
       ...(showGenerations ? generationBands : []),
       ...interactiveNodes,
       ...(showGenerations ? generationLabels : []),
       ...groupHeaders,
+      ...familyCards,
     ],
-    [generationBands, interactiveNodes, generationLabels, groupHeaders, showGenerations],
+    [generationBands, interactiveNodes, generationLabels, groupHeaders, familyCards, showGenerations],
   )
 
   // Only a person is interactive here. Family groups toggle via their own

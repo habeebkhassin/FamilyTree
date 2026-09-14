@@ -1,0 +1,146 @@
+/*
+  The first-load splash. Colours come from the existing tokens, so it
+  follows Light, Dark and System with no theme logic of its own.
+
+  Every delay below is chosen against the greeting in App.tsx: pot, stem,
+  branches and canopy all land inside it, so the tree is actually SEEN to
+  grow rather than being cut off half way up. An animation the application
+  outruns is worse than none — it reads as a stutter on the way in.
+*/
+.splash {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--bg);
+}
+
+.splash__stage {
+  width: 128px;
+  height: 140px;
+}
+
+.splash__art {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ── the pot ──────────────────────────────────────────────────────── */
+.splash__pot {
+  fill: var(--accent-bg);
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  opacity: 0;
+  animation: splash-pot 200ms ease-out 20ms forwards;
+}
+
+/* ── the stem, drawn upward ───────────────────────────────────────── */
+.splash__stem {
+  stroke: var(--accent);
+  stroke-width: 3.4;
+  stroke-dasharray: 54;
+  stroke-dashoffset: 54;
+  animation: splash-draw 260ms cubic-bezier(0.32, 0.8, 0.4, 1) 170ms forwards;
+}
+
+/* ── branches ─────────────────────────────────────────────────────── */
+.splash__branch {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.splash__branch--l {
+  animation: splash-draw 150ms ease-out 400ms forwards;
+}
+
+.splash__branch--r {
+  animation: splash-draw 150ms ease-out 440ms forwards;
+}
+
+/* ── the canopy ───────────────────────────────────────────────────── */
+.splash__leaf {
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  opacity: 0;
+}
+
+.splash__leaf--1 {
+  animation: splash-grow 200ms cubic-bezier(0.34, 1.3, 0.5, 1) 430ms forwards;
+}
+
+.splash__leaf--2 {
+  fill: var(--group-accent);
+  animation: splash-grow 200ms cubic-bezier(0.34, 1.3, 0.5, 1) 470ms forwards;
+}
+
+.splash__leaf--3 {
+  fill: var(--group-accent);
+  animation: splash-grow 200ms cubic-bezier(0.34, 1.3, 0.5, 1) 510ms forwards;
+}
+
+.splash__word {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: splash-fade 280ms ease-out 280ms forwards;
+}
+
+@keyframes splash-pot {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes splash-grow {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes splash-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+  Growth is the whole point of the animation, so for anyone who has asked
+  for less motion the tree is simply already grown — the same picture,
+  arrived at without the movement.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .splash__pot,
+  .splash__stem,
+  .splash__branch,
+  .splash__leaf,
+  .splash__word {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
+}

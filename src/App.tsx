@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { SignInScreen } from './features/auth/SignInScreen'
+import { SplashScreen } from './features/familyTree/SplashScreen'
 import { startupView } from './features/auth/startupGate'
 import { useAuth } from './features/auth/useAuth'
 import { WelcomeScreen } from './features/familyTree/WelcomeScreen'
@@ -47,14 +48,49 @@ function App() {
  * covering it, which is why the screen you return to is genuinely empty
  * of the previous family.
  */
+/**
+ * Shown once per page load, never again.
+ *
+ * The splash belongs to arriving at the application, not to every moment
+ * of waiting: a later loading state — switching family, say — should be a
+ * spinner, because somebody already inside the application does not need
+ * to be welcomed into it again.
+ *
+ * It covers work that was already happening and adds none of its own.
+ * There is no minimum duration and no timer: the animation starts with
+ * the first paint, the session resolves alongside it, and the moment
+ * startup has an answer the answer is what is shown — even if that means
+ * the plant is caught half grown. A splash that delayed anybody to finish
+ * its own animation would be charging the user for decoration.
+ */
+let hasGreeted = false
+
+/** Called when startup finishes, so later waits get the ordinary spinner. */
+function greetingUsed(): void {
+  hasGreeted = true
+}
+
 function StartupGate() {
   const { state } = useAuth()
+  const view = startupView(state)
 
-  switch (startupView(state)) {
+  // Read before the first paint that is not loading, so the flag flips
+  // exactly once and later waits get the ordinary spinner.
+  const greet = !hasGreeted
+  if (view !== 'loading') greetingUsed()
+
+  switch (view) {
     case 'loading':
-      // The session has not resolved. Showing anything else here is the
-      // flash of the wrong screen this state exists to prevent.
-      return <LoadingScreen />
+      /*
+        The session has not resolved. Showing anything else here is the
+        flash of the wrong screen this state exists to prevent.
+
+        The splash occupies this moment; it does not create one. Nothing
+        waits for the animation, no timer holds the application back, and
+        the instant the session resolves this is replaced — so a warm
+        start simply shows less of it.
+      */
+      return greet ? <SplashScreen /> : <LoadingScreen />
     case 'signIn':
       return <SignInScreen />
     case 'app':
