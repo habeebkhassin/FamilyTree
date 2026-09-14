@@ -70,3 +70,50 @@
     opacity: 0.55;
   }
 }
+
+/* ── the marriage that reaches another family ──────────────────────
+   Sits under the rings, small and quiet. It is an affordance on the
+   bond, not a second object in the tree, so it borrows the junction's
+   own centring and adds no width to the row. */
+.union-junction__connection {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 190px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  /* Above the descent lines that leave the junction's bottom handle. */
+  z-index: 3;
+}
+
+.union-junction__connection:hover {
+  border-color: var(--accent);
+}
+
+.union-junction__connection:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.union-junction__connection-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.union-junction--secondary .union-junction__connection,
+.union-junction--context .union-junction__connection {
+  opacity: 0.75;
+}

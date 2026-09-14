@@ -45,6 +45,21 @@
   --shadow: 0 1px 2px rgba(27, 31, 29, 0.04);
   --shadow-hover: 0 2px 8px rgba(27, 31, 29, 0.08);
   --row-band: rgba(27, 31, 29, 0.02);
+  --danger-bg: rgba(179, 69, 63, 0.09);
+
+  /*
+    The OTHER family — and nothing else.
+
+    A second family needs to be distinguishable from this one at a glance,
+    and the accent green is already spoken for: it means "yours". This
+    muted violet is the only other family colour in the application, used
+    for a connected family's card and for its side of a merged tree. It is
+    deliberately desaturated so two families sit side by side as two
+    families, rather than as a warning next to a brand.
+  */
+  --group-accent: #6b5ca8;
+  --group-bg: rgba(107, 92, 168, 0.08);
+  --group-border: rgba(107, 92, 168, 0.24);
 
   --radius: 18px;
   --radius-sm: 12px;
@@ -78,6 +93,10 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-hover: 0 2px 10px rgba(0, 0, 0, 0.45);
     --row-band: rgba(255, 255, 255, 0.03);
+    --danger-bg: rgba(224, 141, 136, 0.14);
+    --group-accent: #a99ae0;
+    --group-bg: rgba(169, 154, 224, 0.14);
+    --group-border: rgba(169, 154, 224, 0.3);
   }
 }
 

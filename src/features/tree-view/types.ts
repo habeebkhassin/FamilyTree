@@ -25,6 +25,16 @@ export interface UnionJunctionNodeData extends Record<string, unknown> {
    */
   startDate?: string
   endDate?: string
+  /**
+   * Set only when this marriage joins two different family groups.
+   *
+   * Derived at render time by familyConnections.ts and injected by the
+   * canvas — there is no stored connection, and the junction itself knows
+   * nothing about families. It is told "this bond also reaches that
+   * family" and draws a chip saying so.
+   */
+  connectedFamilyName?: string
+  onOpenConnectedFamily?: () => void
 }
 
 export type UnionJunctionNode = Node<UnionJunctionNodeData, 'unionJunction'>

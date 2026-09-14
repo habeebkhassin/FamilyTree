@@ -37,6 +37,8 @@ export function UnionJunctionNode({ data }: NodeProps<UnionJunctionNodeType>) {
   const emphasis = typeof data.emphasis === 'string' ? data.emphasis : 'primary'
   const status = data.status
   const startDate = typeof data.startDate === 'string' ? data.startDate : null
+  const connectedFamilyName =
+    typeof data.connectedFamilyName === 'string' ? data.connectedFamilyName : null
 
   // An absent date simply produces no caption — never a guess, and never
   // a placeholder dash, which reads as broken data rather than as a fact
@@ -73,6 +75,40 @@ export function UnionJunctionNode({ data }: NodeProps<UnionJunctionNodeType>) {
           </g>
         </svg>
       </span>
+
+      {/*
+        A marriage that reaches another family says so, quietly, under the
+        rings — one small chip on the bond itself rather than a second
+        card floating in the tree with a line drawn to it. The connection
+        is a fact about THIS marriage, so it belongs on this marker; a
+        line across the canvas to a family box is how a family tree turns
+        into a network diagram.
+      */}
+      {connectedFamilyName && (
+        <button
+          type="button"
+          className="union-junction__connection"
+          onClick={(event) => {
+            // The junction sits inside the canvas; without this the click
+            // also reaches the pane and clears the current selection.
+            event.stopPropagation()
+            data.onOpenConnectedFamily?.()
+          }}
+        >
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+            <path
+              d="M9 12h6M10.5 8.5H8a3.5 3.5 0 1 0 0 7h2.5M13.5 8.5H16a3.5 3.5 0 1 1 0 7h-2.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="union-junction__connection-text">
+            Connected to {connectedFamilyName}
+          </span>
+        </button>
+      )}
 
       <Handle type="source" position={Position.Bottom} id="bottom" />
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import type { FamilyTree } from '../../types'
+import type { FamilyTree, Person } from '../../types'
 import { DuplicateRelationshipError, InvalidRelationshipError } from '../../lib/storage'
 import { FamilyGroupDetail } from '../familyGroups/FamilyGroupDetail'
 import type { FamilyGroupMembership } from '../familyGroups/FamilyGroupDetail'
@@ -16,10 +16,25 @@ import { AddRelativeScreen } from '../people/AddRelativeScreen'
 import { PersonForm } from '../people/PersonForm'
 import type { PersonFormValues } from '../people/PersonForm'
 import { PersonProfile } from '../people/PersonProfile'
-import { formatName, formatParentLinkBadge, formatUnionStatusLabel } from '../people/personDisplay'
+import {
+  formatFullDate,
+  formatName,
+  formatParentLinkBadge,
+  formatUnionStatusLabel,
+} from '../people/personDisplay'
 import { suggestRelatives } from '../people/suggestedRelatives'
 import type { LinkExtras, RelativeIntent } from '../people/types'
 import { FamilyTreeCanvas } from '../tree-view/FamilyTreeCanvas'
+import { ConnectedFamilySheet } from './ConnectedFamilySheet'
+import { FamilyConnectionBanner } from './FamilyConnectionBanner'
+import {
+  familyGroupMemberIds,
+  familyGroupName,
+  familyGroupSize,
+  findFamilyConnections,
+  pickHomeFamilyGroup,
+} from '../relationships/familyConnections'
+import type { FamilyConnection } from '../relationships/familyConnections'
 import { TreeSearch } from '../tree-view/TreeSearch'
 import { PeopleScreen } from './PeopleScreen'
 import { MenuScreen } from './MenuScreen'
@@ -77,6 +92,17 @@ type View =
   | { screen: 'account' }
   /** Who this family is shared with. Reached from Account. */
   | { screen: 'share' }
+  /**
+   * Another family's own tree, reached by following a marriage. Carries
+   * the connection it was reached through so there is always a way back
+   * across the bridge.
+   */
+  | { screen: 'otherFamily'; connection: FamilyConnection }
+  /** Both families at once. A view, never a merge of the records. */
+  | { screen: 'mergedFamily'; connection: FamilyConnection }
+
+/** Nothing collapsed. A module constant so it keeps its identity between renders. */
+const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set<string>()
 
 function describeLinkError(error: unknown): string {
   if (error instanceof DuplicateRelationshipError) return error.message
@@ -128,6 +154,54 @@ export function FamilyTreeWorkspace({
     addMember,
     removeMember,
   } = useFamilyGroups(tree.id)
+
+  /*
+    Marriages that join two families — worked out, not stored.
+
+    Derived from the unions and memberships already loaded above, so this
+    stays in step with them for free and there is no connection record
+    anywhere that could contradict the marriage it describes.
+  */
+  const connections = useMemo(
+    () => findFamilyConnections({ unions, familyGroups, familyGroupMembers }),
+    [unions, familyGroups, familyGroupMembers],
+  )
+
+  /** Which family the person looking is standing in — see the rule there. */
+  const homeGroupId = useMemo(
+    () =>
+      pickHomeFamilyGroup(familyGroupMembers, {
+        claimedPersonId: policy.claimedPersonId,
+        focalPersonId: focal.focalPersonId,
+      }),
+    [familyGroupMembers, policy.claimedPersonId, focal.focalPersonId],
+  )
+
+  /** The chips the main tree shows: bridges seen from home. */
+  const outboundConnections = useMemo(
+    () => (homeGroupId ? connections.filter((c) => c.nearGroupId === homeGroupId) : []),
+    [connections, homeGroupId],
+  )
+
+  const familyNameById = useMemo(
+    () => new Map(familyGroups.map((group) => [group.id, group.name])),
+    [familyGroups],
+  )
+
+  /**
+   * The connection whose sheet is open.
+   *
+   * Not a screen: the sheet is a detour over the tree, and dismissing it
+   * should put you back exactly where you were rather than re-entering a
+   * family you never left.
+   */
+  const [openConnection, setOpenConnection] = useState<FamilyConnection | null>(null)
+
+  /** Both sides of a bridge, collapsed — the merged view's two cards. */
+  const mergedCollapsedIds = useCallback(
+    (connection: FamilyConnection) => new Set([connection.nearGroupId, connection.farGroupId]),
+    [],
+  )
   /**
    * The tree is where the application opens.
    *
@@ -431,6 +505,44 @@ export function FamilyTreeWorkspace({
           titleMenuLabel={`${tree.name}. Switch to another family`}
           actions={view.screen === 'tree' ? treeHeaderActions : peopleHeaderActions}
         />
+      ) : view.screen === 'otherFamily' || view.screen === 'mergedFamily' ? (
+        /*
+          Each of these screens says plainly which family you are looking
+          at. Somebody two taps into another family's tree must never have
+          to work out whose tree it is.
+        */
+        <AppHeader
+          title={
+            view.screen === 'mergedFamily'
+              ? 'Merged Family Tree'
+              : familyGroupName(familyGroups, view.connection.farGroupId)
+          }
+          subtitle={(() => {
+            const count =
+              view.screen === 'mergedFamily'
+                ? familyGroupSize(familyGroupMembers, view.connection.nearGroupId) +
+                  familyGroupSize(familyGroupMembers, view.connection.farGroupId)
+                : familyGroupSize(familyGroupMembers, view.connection.farGroupId)
+            return `${count} ${count === 1 ? 'member' : 'members'}`
+          })()}
+          leading={
+            <IconButton
+              label="Back"
+              onClick={() =>
+                view.screen === 'mergedFamily'
+                  ? (setView({ screen: 'tree' }), setOpenConnection(view.connection))
+                  : setView({ screen: 'tree' })
+              }
+            >
+              {Icon.back({ size: 20 })}
+            </IconButton>
+          }
+          actions={
+            <IconButton label="Search this family" onClick={() => setIsSearching(true)}>
+              {Icon.search({ size: 22 })}
+            </IconButton>
+          }
+        />
       ) : view.screen === 'settings' ? (
         <AppHeader
           title="Backup & Sync"
@@ -449,7 +561,20 @@ export function FamilyTreeWorkspace({
         </header>
       )}
 
-      <div className={view.screen === 'tree' ? 'app-page app-page--flush' : 'app-page'}>
+      {/*
+        The canvas screens run edge to edge and take their height from
+        this container — without the flush modifier React Flow is handed a
+        zero-height pane and draws a blank rectangle.
+      */}
+      <div
+        className={
+          view.screen === 'tree' ||
+          view.screen === 'otherFamily' ||
+          view.screen === 'mergedFamily'
+            ? 'app-page app-page--flush'
+            : 'app-page'
+        }
+      >
         {view.screen === 'home' && (
           <div className="app-page__inner">
             <PeopleScreen
@@ -566,8 +691,128 @@ export function FamilyTreeWorkspace({
             showPhotos={showPhotos}
             isComparing={isComparing}
             onStopComparing={() => setIsComparing(false)}
+            connections={outboundConnections}
+            familyNameById={familyNameById}
+            onOpenConnection={setOpenConnection}
           />
         )}
+
+        {/*
+          The other family's own tree.
+
+          The SAME canvas, told to frame one family's membership — not a
+          second renderer, and emphatically not a copy of anybody. The
+          banner underneath is the way back across the marriage.
+        */}
+        {view.screen === 'otherFamily' &&
+          (() => {
+            const { connection } = view
+            const memberIds = familyGroupMemberIds(familyGroupMembers, connection.farGroupId)
+            const couple = [connection.farPersonId, connection.nearPersonId]
+              .map((id) => people.find((person) => person.id === id))
+              .filter((person): person is Person => Boolean(person))
+              .map((person) => formatName(person))
+              .join(' & ')
+            const married = connection.startDate ? formatFullDate(connection.startDate) : null
+            return (
+              <>
+                <FamilyTreeCanvas
+                  people={people}
+                  parentLinks={parentLinks}
+                  unions={unions}
+                  familyGroups={familyGroups}
+                  familyGroupMembers={familyGroupMembers}
+                  collapsedGroupIds={NO_COLLAPSED_GROUPS}
+                  onToggleFamilyGroup={toggleFamilyGroup}
+                  onSelectPerson={openProfile}
+                  // No focal person, so the opening frame shows this whole
+                  // family rather than zooming into one household.
+                  focalPersonId={undefined}
+                  highlightPersonId={connection.farPersonId}
+                  onFocusPerson={focal.focusOn}
+                  focusHistory={focal.history}
+                  onFocusBack={focal.goBack}
+                  claimedPersonId={policy.claimedPersonId}
+                  shouldPromptForFocus={false}
+                  onDismissFocusPrompt={focal.dismissPrompt}
+                  requestedView="family-group"
+                  onChangeView={setTreeView}
+                  onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
+                  showGenerations={showGenerations}
+                  showPhotos={showPhotos}
+                  isComparing={false}
+                  onStopComparing={() => setIsComparing(false)}
+                  restrictToFamilyGroup={{
+                    memberIds,
+                    connectingPersonId: connection.farPersonId,
+                  }}
+                />
+                <div className="workspace__connection-banner">
+                  <FamilyConnectionBanner
+                    title="Connected to your family"
+                    through={`Through ${couple}`}
+                    detail={married ? `(Married ${married})` : null}
+                    onClick={() => {
+                      setOpenConnection(connection)
+                      setView({ screen: 'tree' })
+                    }}
+                  />
+                </div>
+              </>
+            )
+          })()}
+
+        {/*
+          Both families at once.
+
+          Each family is collapsed to its own card and the marriage is
+          drawn between them, which is exactly what the existing group
+          projection already does — so this view invents no layout, no
+          parent links and no people. Expanding either card is still the
+          same toggle it has always been.
+        */}
+        {view.screen === 'mergedFamily' &&
+          (() => {
+            const { connection } = view
+            const nearName = familyGroupName(familyGroups, connection.nearGroupId)
+            const farName = familyGroupName(familyGroups, connection.farGroupId)
+            return (
+              <>
+                <FamilyTreeCanvas
+                  people={people}
+                  parentLinks={parentLinks}
+                  unions={unions}
+                  familyGroups={familyGroups}
+                  familyGroupMembers={familyGroupMembers}
+                  collapsedGroupIds={mergedCollapsedIds(connection)}
+                  onToggleFamilyGroup={toggleFamilyGroup}
+                  onSelectPerson={openProfile}
+                  focalPersonId={undefined}
+                  onFocusPerson={focal.focusOn}
+                  focusHistory={focal.history}
+                  onFocusBack={focal.goBack}
+                  claimedPersonId={policy.claimedPersonId}
+                  shouldPromptForFocus={false}
+                  onDismissFocusPrompt={focal.dismissPrompt}
+                  requestedView="full"
+                  onChangeView={setTreeView}
+                  onOpenViewOptions={() => setView({ screen: 'viewOptions' })}
+                  showGenerations={showGenerations}
+                  showPhotos={showPhotos}
+                  isComparing={false}
+                  onStopComparing={() => setIsComparing(false)}
+                />
+                <div className="workspace__connection-banner">
+                  <FamilyConnectionBanner
+                    tone="group"
+                    title="Merged view"
+                    through={`${nearName} and ${farName}, connected through marriage.`}
+                    detail="Changes are saved in their respective families."
+                  />
+                </div>
+              </>
+            )
+          })()}
 
         {/*
           Search sits over the tree rather than replacing it: the answer to
@@ -577,7 +822,10 @@ export function FamilyTreeWorkspace({
           focus machinery a tap on a card offers — and never opens their
           profile, which would be a different question.
         */}
-        {view.screen === 'tree' && isSearching && (
+        {(view.screen === 'tree' ||
+          view.screen === 'otherFamily' ||
+          view.screen === 'mergedFamily') &&
+          isSearching && (
           <TreeSearch
             people={people}
             onPick={(personId) => {
@@ -586,7 +834,7 @@ export function FamilyTreeWorkspace({
             }}
             onClose={() => setIsSearching(false)}
           />
-        )}
+          )}
 
         {view.screen === 'createPerson' &&
           (() => {
@@ -775,6 +1023,71 @@ export function FamilyTreeWorkspace({
         draws its own header and therefore has no back button, so without
         the bar underneath it there would be no way out of it at all.
       */}
+      {/*
+        The Connected Family sheet.
+
+        Rendered last so it sits over the tree rather than replacing it —
+        the family you were looking at stays behind the scrim, which is
+        what makes dismissing it feel like stepping back rather than
+        navigating somewhere new.
+      */}
+      {openConnection &&
+        (() => {
+          const connection = openConnection
+          const near = people.find((person) => person.id === connection.nearPersonId)
+          const far = people.find((person) => person.id === connection.farPersonId)
+          if (!near || !far) return null
+          return (
+            <ConnectedFamilySheet
+              connection={connection}
+              near={near}
+              far={far}
+              familyName={familyGroupName(familyGroups, connection.farGroupId)}
+              memberCount={familyGroupSize(familyGroupMembers, connection.farGroupId)}
+              onClose={() => setOpenConnection(null)}
+              onOpenFamily={() => {
+                setOpenConnection(null)
+                setView({ screen: 'otherFamily', connection })
+              }}
+              onViewMarriage={() => {
+                // The marriage lives on the people it belongs to, so
+                // "details" is their profile rather than a screen invented
+                // for a record that has no page of its own.
+                setOpenConnection(null)
+                openProfile(connection.nearPersonId)
+              }}
+              onEditConnection={() => {
+                // Editing the connection means editing the membership that
+                // creates it, which is the family group's own screen.
+                setOpenConnection(null)
+                setView({ screen: 'familyGroupDetail', familyGroupId: connection.farGroupId })
+              }}
+              onViewMerged={() => {
+                setOpenConnection(null)
+                setView({ screen: 'mergedFamily', connection })
+              }}
+              onRemoveConnection={async () => {
+                /*
+                  Removes the membership that puts this person in the other
+                  family — and nothing else. The marriage stays, both
+                  families stay, and every person stays. Without the
+                  membership the two families simply stop reading as
+                  connected, which is exactly what was asked for.
+                */
+                const membership = familyGroupMembers.find(
+                  (member) =>
+                    !member.deletedAt &&
+                    member.familyGroupId === connection.farGroupId &&
+                    member.personId === connection.farPersonId,
+                )
+                if (membership) await removeMember(membership.id)
+                setOpenConnection(null)
+                setView({ screen: 'tree' })
+              }}
+            />
+          )
+        })()}
+
       {showsBottomNav && <BottomNavigation current={destination} onNavigate={navigate} />}
     </div>
   )

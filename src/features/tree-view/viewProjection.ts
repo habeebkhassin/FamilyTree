@@ -1,5 +1,6 @@
 import type { FamilyGraph } from './types'
 import type { ProjectedFamilyView, ViewEmphasis, ViewProjectionOptions } from './viewTypes'
+import { projectFamilyGroupView } from './familyGroupView'
 import { projectMyFamily } from './myFamilyView'
 import { projectLineage } from './lineageView'
 import { projectDescendants } from './descendantsView'
@@ -198,6 +199,21 @@ export function projectFamilyTreeView(
     // applied downward — see descendantsView.ts. It frames the line of
     // descent; it never re-ranks it.
     return { view: options.view, ...projectDescendants(graph, ranks, options.focalPersonId) }
+  }
+
+  if (options.view === 'family-group') {
+    // One family's own tree, framed by who belongs to it — see
+    // familyGroupView.ts. Nobody is copied into it and nobody is
+    // re-parented to appear in it; the frame moves, the family does not.
+    return {
+      view: options.view,
+      ...projectFamilyGroupView(
+        graph,
+        ranks,
+        options.familyGroup?.memberIds ?? new Set<string>(),
+        options.familyGroup?.connectingPersonId ?? null,
+      ),
+    }
   }
 
   if (options.view === 'my-family') {

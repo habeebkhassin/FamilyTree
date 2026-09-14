@@ -19,6 +19,8 @@ export type FamilyTreeView =
   | 'descendants'
   /** The path connecting two selected people. */
   | 'relationship'
+  /** One family group's own tree, reached across a marriage. */
+  | 'family-group'
 
 /**
  * The views `projectFamilyTreeView` can actually produce today.
@@ -31,7 +33,7 @@ export type FamilyTreeView =
  */
 export type ImplementedView = Extract<
   FamilyTreeView,
-  'full' | 'my-family' | 'lineage' | 'descendants'
+  'full' | 'my-family' | 'lineage' | 'descendants' | 'family-group'
 >
 
 /**
@@ -45,6 +47,16 @@ export type ViewEmphasis = 'primary' | 'secondary' | 'context'
 
 export interface ViewProjectionOptions {
   view: ImplementedView
+  /**
+   * Required by the `family-group` view and ignored by every other one:
+   * which family's tree this is, and who married into it to bring the
+   * visitor here. Passed rather than looked up, so the projection stays
+   * pure — it knows about membership, not about storage.
+   */
+  familyGroup?: {
+    memberIds: ReadonlySet<string>
+    connectingPersonId?: string | null
+  }
   /**
    * The person the tree is being explored from (Phase 5C-1).
    *

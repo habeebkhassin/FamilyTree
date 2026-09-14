@@ -1,4 +1,5 @@
 .workspace {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -42,4 +43,28 @@
 
 .workspace__brand:hover {
   color: var(--accent);
+}
+
+/* The connection banner over the canvas, clear of the zoom controls and
+   the bottom bar. */
+.workspace__connection-banner {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.workspace__connection-banner > * {
+  pointer-events: auto;
+}
+
+@media (min-width: 620px) {
+  .workspace__connection-banner {
+    right: auto;
+    left: 50%;
+    width: min(440px, calc(100vw - 32px));
+    transform: translateX(-50%);
+  }
 }

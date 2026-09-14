@@ -9,6 +9,7 @@ import { emphasisFor, projectFamilyTreeView } from './viewProjection'
 import { styleEdgesForView } from './viewEmphasis'
 import { centreOnHousehold } from './focalCentering'
 import type { ImplementedView } from './viewTypes'
+import type { FamilyConnection } from '../relationships/familyConnections'
 import { layoutFamilyGraph } from './layout'
 import { PersonNode } from './PersonNode'
 import { UnionJunctionNode } from './UnionJunctionNode'
@@ -47,6 +48,35 @@ interface FamilyTreeCanvasProps {
   collapsedGroupIds: ReadonlySet<string>
   onToggleFamilyGroup: (familyGroupId: string) => void
   onSelectPerson: (personId: string) => void
+  /**
+   * Marriages that join this family to another, worked out from the
+   * unions and memberships already loaded — see familyConnections.ts.
+   *
+   * Passed in rather than derived here: the canvas draws what it is
+   * given, and the workspace is what knows which family is being looked
+   * at. Empty is the ordinary case and costs nothing.
+   */
+  connections?: readonly FamilyConnection[]
+  onOpenConnection?: (connection: FamilyConnection) => void
+  /** Name to show on a connection chip, by family group id. */
+  familyNameById?: ReadonlyMap<string, string>
+  /**
+   * Restricts the tree to one family group — the screen you reach by
+   * following a marriage across. Nobody is copied or re-parented; this
+   * only frames the canonical graph. See familyGroupView.ts.
+   */
+  restrictToFamilyGroup?: { memberIds: ReadonlySet<string>; connectingPersonId?: string | null }
+  /**
+   * Ringed like the focal person, but WITHOUT moving the camera.
+   *
+   * Focus does two things at once — it haloes somebody and it frames
+   * their household — and the connected-family screen wants only the
+   * first: the spouse whose marriage you followed should stand out, while
+   * the opening frame still shows the whole family you have just arrived
+   * in. Pointing focus at them instead zooms into their household, which
+   * is the wrong answer to "show me their family".
+   */
+  highlightPersonId?: string | null
   /**
    * The person the tree is currently being explored from. Centers the
    * viewport on them instead of fitting everything, and gives their card
@@ -482,6 +512,11 @@ export function FamilyTreeCanvas({
   collapsedGroupIds,
   onToggleFamilyGroup,
   onSelectPerson,
+  connections,
+  onOpenConnection,
+  familyNameById,
+  restrictToFamilyGroup,
+  highlightPersonId,
   focalPersonId,
   onFocusPerson,
   focusHistory,
@@ -544,8 +579,16 @@ export function FamilyTreeCanvas({
    * nothing that reaches the layout.
    */
   const viewGraph = useMemo(
-    () => projectFamilyTreeView(baseGraph, genealogyRanks, { view: activeView, focalPersonId }),
-    [baseGraph, genealogyRanks, focalPersonId, activeView],
+    () =>
+      projectFamilyTreeView(baseGraph, genealogyRanks, {
+        // Looking at another family is a view of the same graph, so it
+        // travels the same pipeline as every other view rather than
+        // getting a parallel one of its own.
+        view: restrictToFamilyGroup ? 'family-group' : activeView,
+        focalPersonId,
+        ...(restrictToFamilyGroup && { familyGroup: restrictToFamilyGroup }),
+      }),
+    [baseGraph, genealogyRanks, focalPersonId, activeView, restrictToFamilyGroup],
   )
 
   // Destructured deliberately. The full view ignores focalPersonId, so
@@ -758,6 +801,21 @@ export function FamilyTreeCanvas({
   const generationLabels = useMemo(() => buildGenerationLabels(layoutedNodes), [layoutedNodes])
   const generationBands = useMemo(() => buildGenerationBands(layoutedNodes), [layoutedNodes])
 
+  /*
+    One connection per union, from the side being viewed.
+
+    findFamilyConnections records each bridge twice, once from each
+    family's point of view; a chip on a junction wants whichever of those
+    is "from here", and the workspace passes only that side.
+  */
+  const connectionByUnionId = useMemo(() => {
+    const byUnion = new Map<string, FamilyConnection>()
+    for (const connection of connections ?? []) {
+      if (!byUnion.has(connection.unionId)) byUnion.set(connection.unionId, connection)
+    }
+    return byUnion
+  }, [connections])
+
   // The toggle is injected here rather than produced by the projection —
   // groupProjection.ts stays a pure data transform with no UI concerns.
   const interactiveNodes = useMemo<Node[]>(
@@ -788,16 +846,31 @@ export function FamilyTreeCanvas({
             change to where anybody stands.
           */
           const emphasis = emphasisFor(viewGraph, node.id)
+          // A marriage that reaches another family gets a chip saying so.
+          // Injected here for the same reason the group toggle is: the
+          // projections stay pure data transforms with no UI in them.
+          const connection = connectionByUnionId.get(node.data.unionId)
+          const connectedFamilyName = connection
+            ? familyNameById?.get(connection.farGroupId)
+            : undefined
+          const extras = {
+            ...(emphasis !== 'primary' && { emphasis }),
+            ...(connection &&
+              connectedFamilyName && {
+                connectedFamilyName,
+                onOpenConnectedFamily: () => onOpenConnection?.(connection),
+              }),
+          }
           return {
             ...node,
             position: { x: node.position.x, y: node.position.y + JUNCTION_ROW_OFFSET },
-            ...(emphasis !== 'primary' && { data: { ...node.data, emphasis } }),
+            ...(Object.keys(extras).length > 0 && { data: { ...node.data, ...extras } }),
           }
         }
 
         if (node.type === 'person') {
           const index = comparisonIds.indexOf(node.id)
-          const isFocal = node.id === focalPersonId
+          const isFocal = node.id === focalPersonId || node.id === highlightPersonId
           // Absent from the map means `primary`, which is what every node
           // gets when nobody is focused — so an unfocused tree is drawn
           // exactly as it always was.
@@ -842,6 +915,10 @@ export function FamilyTreeCanvas({
       showPhotos,
       hiddenChildCountByParentId,
       revealChildrenOf,
+      highlightPersonId,
+      connectionByUnionId,
+      familyNameById,
+      onOpenConnection,
     ],
   )
 
@@ -851,7 +928,13 @@ export function FamilyTreeCanvas({
         ...header,
         data: { ...header.data, onToggle: () => onToggleFamilyGroup(header.data.familyGroup.id) },
       })),
-    [layoutedNodes, familyGroups, familyGroupMembers, collapsedGroupIds, onToggleFamilyGroup],
+    [
+      layoutedNodes,
+      familyGroups,
+      familyGroupMembers,
+      collapsedGroupIds,
+      onToggleFamilyGroup,
+    ],
   )
 
   /*
